@@ -1,0 +1,126 @@
+"""Tests for token-efficient output formatters."""
+
+from __future__ import annotations
+
+from obsidian_blade_mcp.formatters import (
+    format_file_concise,
+    format_file_list,
+    format_folder_list,
+    format_properties,
+    format_vault_info,
+    truncate_content,
+)
+
+
+class TestFormatFileConcise:
+    """Test single-file concise formatting."""
+
+    def test_full_entry(self):
+        entry = {"path": "notes/Test.md", "size": 2345, "modified": "2026-03-01T10:00:00"}
+        result = format_file_concise(entry)
+        assert "notes/Test.md" in result
+        assert "2.3 KB" in result
+        assert "2026-03-01" in result
+
+    def test_minimal_entry(self):
+        result = format_file_concise({"path": "test.md"})
+        assert result == "test.md"
+
+    def test_name_fallback(self):
+        result = format_file_concise({"name": "Test Note"})
+        assert "Test Note" in result
+
+
+class TestFormatFileList:
+    """Test file list formatting with limits."""
+
+    def test_empty_list(self):
+        assert format_file_list([]) == "No files found."
+
+    def test_within_limit(self, sample_files):
+        result = format_file_list(sample_files, limit=10)
+        assert "Note A.md" in result
+        assert "more" not in result
+
+    def test_exceeds_limit(self, sample_files):
+        result = format_file_list(sample_files, limit=2)
+        assert "1 more" in result
+
+    def test_custom_total(self):
+        files = [{"path": "a.md"}, {"path": "b.md"}]
+        result = format_file_list(files, limit=2, total=100)
+        assert "98 more" in result
+
+
+class TestFormatFolderList:
+    """Test folder list formatting."""
+
+    def test_empty(self):
+        assert format_folder_list([]) == "No folders found."
+
+    def test_string_list(self, sample_folders):
+        result = format_folder_list(sample_folders)
+        assert "atlas/" in result
+        assert "spaces/" in result
+
+    def test_dict_list(self):
+        folders = [{"path": "atlas/"}, {"path": "spaces/"}]
+        result = format_folder_list(folders)
+        assert "atlas/" in result
+
+
+class TestFormatProperties:
+    """Test property formatting."""
+
+    def test_dict_properties(self, sample_properties):
+        result = format_properties(sample_properties)
+        assert "kind: effort" in result
+        assert "status: on" in result
+        assert "rank: 8" in result
+        assert "tags: [#IT/software, #PKM/workflow]" in result
+
+    def test_list_properties(self):
+        props = [
+            {"name": "status", "value": "on"},
+            {"name": "rank", "value": 8},
+        ]
+        result = format_properties(props)
+        assert "status: on" in result
+        assert "rank: 8" in result
+
+    def test_empty_dict(self):
+        result = format_properties({})
+        assert "No properties" in result
+
+    def test_none_values_omitted(self):
+        result = format_properties({"kind": "effort", "empty": None})
+        assert "kind: effort" in result
+        assert "empty" not in result
+
+
+class TestFormatVaultInfo:
+    """Test vault info formatting."""
+
+    def test_full_info(self, sample_vault_info):
+        result = format_vault_info(sample_vault_info)
+        assert "test-vault" in result
+        assert "1234" in result
+
+    def test_string_passthrough(self):
+        assert format_vault_info("raw output") == "raw output"
+
+
+class TestTruncateContent:
+    """Test content truncation."""
+
+    def test_short_content(self):
+        content = "Short\ncontent"
+        assert truncate_content(content) == content
+
+    def test_long_content(self):
+        content = "\n".join(f"Line {i}" for i in range(200))
+        result = truncate_content(content, max_lines=100)
+        assert "100 more lines" in result
+        assert "Line 0" in result
+        assert "Line 99" in result
+        assert "Line 100" not in result.split("…")[0]

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make install-dev)",
+      "Bash(make test)",
+      "Bash(make test-unit)",
+      "Bash(make lint)",
+      "Bash(make format)",
+      "Bash(make format-check)",
+      "Bash(make type-check)",
+      "Bash(make check)",
+      "Bash(make clean)",
+      "Bash(uv sync*)",
+      "Bash(uv run pytest*)",
+      "Bash(uv run ruff*)",
+      "Bash(uv run mypy*)"
+    ]
+  }
+}

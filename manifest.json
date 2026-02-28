@@ -1,0 +1,32 @@
+{
+  "name": "obsidian-blade-mcp",
+  "version": "0.1.0",
+  "description": "Obsidian CLI MCP Server — precision vault tools via subprocess",
+  "author": "Piers",
+  "license": "MIT",
+  "runtime": "python",
+  "entry_point": "obsidian-blade-mcp",
+  "environment_variables": {
+    "OBSIDIAN_VAULT_NAME": "Target vault name (optional if only one vault open)",
+    "OBSIDIAN_CLI_PATH": "Path to obsidian binary (auto-detected if empty)",
+    "OBSIDIAN_MCP_TRANSPORT": "stdio|http (default: stdio)",
+    "OBSIDIAN_MCP_HOST": "127.0.0.1",
+    "OBSIDIAN_MCP_PORT": "8766",
+    "OBSIDIAN_MCP_API_TOKEN": "Bearer token for HTTP auth (disabled if empty)"
+  },
+  "tools": [
+    "vault_info",
+    "vault_read",
+    "vault_create",
+    "vault_append",
+    "vault_prepend",
+    "vault_files",
+    "vault_file_info",
+    "vault_folders",
+    "vault_recents",
+    "vault_property_read",
+    "vault_property_set",
+    "vault_property_remove",
+    "vault_properties"
+  ]
+}
