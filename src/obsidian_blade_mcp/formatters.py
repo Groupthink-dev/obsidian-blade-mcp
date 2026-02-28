@@ -13,11 +13,14 @@ from typing import Any
 from obsidian_blade_mcp.models import DEFAULT_LIMIT
 
 
-def format_file_concise(entry: dict[str, Any]) -> str:
+def format_file_concise(entry: dict[str, Any] | str) -> str:
     """Format a file entry as a single concise line.
 
+    Handles both dict entries (with path/size/modified) and plain strings (CLI output).
     Example: ``notes/My Note.md (2.3 KB, 2026-03-01)``
     """
+    if isinstance(entry, str):
+        return entry.strip()
     path = entry.get("path", entry.get("name", "unknown"))
     parts = [path]
     if size := entry.get("size"):
@@ -28,7 +31,7 @@ def format_file_concise(entry: dict[str, Any]) -> str:
 
 
 def format_file_list(
-    files: list[dict[str, Any]],
+    files: list[dict[str, Any] | str],
     limit: int = DEFAULT_LIMIT,
     total: int | None = None,
 ) -> str:
@@ -91,9 +94,20 @@ def format_properties(props: dict[str, Any] | list[dict[str, Any]]) -> str:
 
 
 def format_vault_info(info: dict[str, Any] | str) -> str:
-    """Format vault metadata concisely."""
+    """Format vault metadata concisely.
+
+    Handles both JSON dicts and tab-separated CLI output.
+    """
     if isinstance(info, str):
-        return info
+        # CLI returns tab-separated key\tvalue lines — format as key: value
+        lines = []
+        for line in info.strip().split("\n"):
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                lines.append(f"{parts[0]}: {parts[1]}")
+            else:
+                lines.append(line)
+        return "\n".join(lines) if lines else info
 
     lines = []
     if name := info.get("name"):

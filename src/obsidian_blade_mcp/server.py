@@ -25,6 +25,15 @@ from obsidian_blade_mcp.models import DEFAULT_LIMIT
 
 logger = logging.getLogger(__name__)
 
+
+def _to_list(result: object) -> list[str]:
+    """Convert CLI output to a list — handles both JSON lists and newline-delimited strings."""
+    if isinstance(result, list):
+        return result
+    if isinstance(result, str):
+        return [line for line in result.strip().split("\n") if line.strip()]
+    return [str(result)]
+
 # ---------------------------------------------------------------------------
 # Transport configuration
 # ---------------------------------------------------------------------------
@@ -196,9 +205,7 @@ def vault_files(
     """
     try:
         result = _get_client().files(path=path, limit=limit, vault=vault)
-        if isinstance(result, list):
-            return format_file_list(result, limit=limit)
-        return str(result)
+        return format_file_list(_to_list(result), limit=limit)
     except ObsidianCLIError as e:
         return _error_response(e)
 
@@ -234,9 +241,7 @@ def vault_folders(
     """
     try:
         result = _get_client().folders(vault=vault)
-        if isinstance(result, list):
-            return format_folder_list(result)
-        return str(result)
+        return format_folder_list(_to_list(result))
     except ObsidianCLIError as e:
         return _error_response(e)
 
@@ -253,9 +258,7 @@ def vault_recents(
     """
     try:
         result = _get_client().recents(limit=limit, vault=vault)
-        if isinstance(result, list):
-            return format_file_list(result, limit=limit)
-        return str(result)
+        return format_file_list(_to_list(result), limit=limit)
     except ObsidianCLIError as e:
         return _error_response(e)
 

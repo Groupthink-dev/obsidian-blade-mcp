@@ -59,11 +59,11 @@ class TestBuildArgs:
 
     def test_simple_command(self, cli):
         args = cli._build_args("read")
-        assert args == ["/usr/local/bin/obsidian", 'vault="test-vault"', "read"]
+        assert args == ["/usr/local/bin/obsidian", "vault=test-vault", "read"]
 
     def test_command_with_params(self, cli):
         args = cli._build_args("read", params={"file": "My Note"})
-        assert 'file="My Note"' in args
+        assert "file=My Note" in args
 
     def test_command_with_numeric_param(self, cli):
         args = cli._build_args("files", params={"limit": 10})
@@ -76,7 +76,7 @@ class TestBuildArgs:
 
     def test_command_with_none_params(self, cli):
         args = cli._build_args("read", params={"file": None, "path": "test.md"})
-        assert 'path="test.md"' in args
+        assert "path=test.md" in args
         assert "file" not in " ".join(args)
 
     def test_no_vault(self):
@@ -87,7 +87,7 @@ class TestBuildArgs:
 
     def test_vault_override(self, cli):
         args = cli._build_args("read", vault="other-vault")
-        assert 'vault="other-vault"' in args
+        assert "vault=other-vault" in args
 
 
 class TestRun:
@@ -143,7 +143,7 @@ class TestRunJSON:
         mock_subprocess.return_value = successful_result("{}")
         cli.run_json("vault")
         call_args = mock_subprocess.call_args[0][0]
-        assert 'format="json"' in call_args
+        assert "format=json" in call_args
 
     def test_non_json_fallback(self, cli, mock_subprocess, successful_result):
         mock_subprocess.return_value = successful_result("plain text output")

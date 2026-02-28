@@ -141,7 +141,7 @@ class ObsidianCLI:
         # Vault targeting — must come first
         effective_vault = vault or self.vault_name
         if effective_vault:
-            args.append(f'vault="{effective_vault}"')
+            args.append(f"vault={effective_vault}")
 
         # Command
         args.append(command)
@@ -157,7 +157,7 @@ class ObsidianCLI:
                 elif isinstance(value, (int, float)):
                     args.append(f"{key}={value}")
                 else:
-                    args.append(f'{key}="{value}"')
+                    args.append(f"{key}={value}")
 
         # Flags
         if flags:
