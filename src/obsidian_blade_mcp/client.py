@@ -300,11 +300,21 @@ class ObsidianCLI:
             params["path"] = path
         return self.run("prepend", params, vault)
 
-    def files(self, path: str | None = None, limit: int | None = None, vault: str | None = None) -> Any:
-        """List files in the vault."""
+    def files(
+        self, folder: str | None = None, ext: str | None = None, limit: int | None = None, vault: str | None = None
+    ) -> Any:
+        """List files in the vault.
+
+        Args:
+            folder: Filter to a folder path (CLI param is ``folder=``).
+            ext: Filter by file extension (e.g., ``md``, ``canvas``).
+            limit: Max results.
+        """
         params: dict[str, Any] = {}
-        if path:
-            params["path"] = path
+        if folder:
+            params["folder"] = folder
+        if ext:
+            params["ext"] = ext
         if limit:
             params["limit"] = limit
         return self.run_json("files", params, vault)
@@ -323,7 +333,11 @@ class ObsidianCLI:
         return self.run_json("folders", vault=vault)
 
     def recents(self, limit: int | None = None, vault: str | None = None) -> Any:
-        """List recently modified files."""
+        """List recently modified files.
+
+        Note: The CLI ignores ``limit=`` for ``recents``; truncation is applied
+        client-side in the formatter.
+        """
         params: dict[str, Any] = {}
         if limit:
             params["limit"] = limit
@@ -375,3 +389,140 @@ class ObsidianCLI:
         if path:
             params["path"] = path
         return self.run_json("properties", params, vault)
+
+    # -------------------------------------------------------------------
+    # Convenience methods for Phase 2 tools (search, tags, bases)
+    # -------------------------------------------------------------------
+
+    def search(
+        self,
+        query: str,
+        path: str | None = None,
+        case_sensitive: bool = False,
+        vault: str | None = None,
+    ) -> Any:
+        """Search vault for notes matching a query.
+
+        Returns a JSON array of matching file paths.
+
+        Note: The CLI's ``limit=`` parameter is broken for ``search`` (returns
+        zero results). Do NOT pass limit to the CLI — apply client-side
+        truncation in the formatter instead.
+        """
+        params: dict[str, Any] = {"query": query}
+        if path:
+            params["path"] = path
+        flags: list[str] = []
+        if case_sensitive:
+            flags.append("case-sensitive")
+        return self.run_json("search", params, vault, flags)
+
+    def search_context(
+        self,
+        query: str,
+        path: str | None = None,
+        case_sensitive: bool = False,
+        vault: str | None = None,
+    ) -> str:
+        """Search vault with matching context lines.
+
+        Returns text in ``path:line: matching text`` format (one line per match).
+        Uses text format because it's more structured than JSON for this command.
+
+        Note: The CLI's ``limit=`` parameter is broken for ``search:context``
+        (returns zero results). Do NOT pass limit — truncate client-side.
+        """
+        params: dict[str, Any] = {"query": query}
+        if path:
+            params["path"] = path
+        flags: list[str] = []
+        if case_sensitive:
+            flags.append("case-sensitive")
+        return self.run("search:context", params, vault, flags)
+
+    def tags(
+        self,
+        file: str | None = None,
+        path: str | None = None,
+        sort_by_count: bool = False,
+        vault: str | None = None,
+    ) -> Any:
+        """List tags in the vault or for a specific file.
+
+        Returns JSON array of ``{"tag": "#name", "count": "N"}`` objects.
+        Always passes ``counts`` flag for usage data.
+        """
+        params: dict[str, Any] = {}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        flags = ["counts"]
+        if sort_by_count:
+            flags.append("sort")
+        return self.run_json("tags", params, vault, flags)
+
+    def tag(self, name: str, verbose: bool = False, vault: str | None = None) -> Any:
+        """List files with a specific tag.
+
+        Returns newline-delimited file paths. ``run_json`` falls back to string
+        because the CLI has no JSON support for this command.
+        """
+        params: dict[str, Any] = {"name": name}
+        if verbose:
+            params["verbose"] = True
+        return self.run_json("tag", params, vault)
+
+    def bases(self, vault: str | None = None) -> Any:
+        """List all ``.base`` files in the vault.
+
+        Returns newline-delimited paths. ``run_json`` falls back to string
+        because the CLI has no JSON support for this command.
+        """
+        return self.run_json("bases", vault=vault)
+
+    def base_views(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> Any:
+        """List views in a base file.
+
+        Note: The CLI requires the base to be the active file in Obsidian.
+        This limits utility for programmatic access.
+        """
+        params: dict[str, Any] = {}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        return self.run_json("base:views", params, vault)
+
+    def base_query(
+        self,
+        file: str | None = None,
+        path: str | None = None,
+        view: str | None = None,
+        output_format: str = "json",
+        vault: str | None = None,
+    ) -> Any:
+        """Query a base file for its data.
+
+        Args:
+            file: Base name (wikilink resolution — resolves to .md, unreliable).
+            path: Exact path with ``.base`` extension (preferred for reliable targeting).
+            view: Named view within the base.
+            output_format: Output format — ``json``, ``md``, ``csv``, ``tsv``, ``paths``.
+        """
+        params: dict[str, Any] = {"format": output_format}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        if view:
+            params["view"] = view
+        if output_format == "json":
+            raw = self.run("base:query", params, vault)
+            try:
+                import json as _json
+
+                return _json.loads(raw)
+            except (ValueError, TypeError):
+                return raw.strip()
+        return self.run("base:query", params, vault)

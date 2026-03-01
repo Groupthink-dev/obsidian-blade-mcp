@@ -193,6 +193,19 @@ class TestConvenienceMethods:
         result = cli.files(limit=10)
         assert isinstance(result, list)
 
+    def test_files_uses_folder_param(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('[{"path":"spaces/a.md"}]')
+        cli.files(folder="spaces/")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "folder=spaces/" in call_args
+        assert "path=" not in " ".join(call_args)
+
+    def test_files_ext_param(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('[{"path":"a.base"}]')
+        cli.files(ext="base")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "ext=base" in call_args
+
     def test_file_info(self, cli, mock_subprocess, successful_result):
         mock_subprocess.return_value = successful_result('{"path":"a.md","size":100}')
         result = cli.file_info(file="A")
@@ -229,3 +242,91 @@ class TestConvenienceMethods:
         mock_subprocess.return_value = successful_result('{"kind":"effort","status":"on"}')
         result = cli.properties(file="Note")
         assert result["kind"] == "effort"
+
+
+class TestPhase2Methods:
+    """Test Phase 2 convenience methods (search, tags, bases)."""
+
+    def test_search(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('["atlas/cards/Docker.md","spaces/note.md"]')
+        result = cli.search(query="Docker")
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+    def test_search_does_not_pass_limit(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.search(query="test")
+        call_args = mock_subprocess.call_args[0][0]
+        assert not any(arg.startswith("limit=") for arg in call_args)
+
+    def test_search_with_path(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.search(query="test", path="atlas/")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "path=atlas/" in call_args
+
+    def test_search_case_sensitive(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.search(query="Test", case_sensitive=True)
+        call_args = mock_subprocess.call_args[0][0]
+        assert "case-sensitive" in call_args
+
+    def test_search_context(self, cli, mock_subprocess, successful_result):
+        ctx_output = "atlas/cards/Docker.md:5: Docker is great\n"
+        mock_subprocess.return_value = successful_result(ctx_output)
+        result = cli.search_context(query="Docker")
+        assert "Docker" in result
+        assert isinstance(result, str)
+
+    def test_search_context_does_not_pass_limit(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.search_context(query="test")
+        call_args = mock_subprocess.call_args[0][0]
+        assert not any(arg.startswith("limit=") for arg in call_args)
+
+    def test_tags(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('[{"tag":"#IT/software","count":"5"}]')
+        result = cli.tags()
+        assert isinstance(result, list)
+        assert result[0]["tag"] == "#IT/software"
+
+    def test_tags_always_passes_counts(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.tags()
+        call_args = mock_subprocess.call_args[0][0]
+        assert "counts" in call_args
+
+    def test_tags_sort_by_count(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.tags(sort_by_count=True)
+        call_args = mock_subprocess.call_args[0][0]
+        assert "sort" in call_args
+
+    def test_tag(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("atlas/cards/Docker.md\nspaces/note.md")
+        result = cli.tag(name="#IT/software")
+        # run_json fallback to string
+        assert "Docker" in result
+
+    def test_bases(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("path/to/file.base\npath/to/other.base")
+        result = cli.bases()
+        assert "file.base" in result
+
+    def test_base_views(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('["All","Phase 1"]')
+        result = cli.base_views(file="My Base")
+        assert isinstance(result, list)
+        assert "All" in result
+
+    def test_base_query_json(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('[{"name":"Task 1","status":"done"}]')
+        result = cli.base_query(path="file.base", output_format="json")
+        assert isinstance(result, list)
+        assert result[0]["name"] == "Task 1"
+
+    def test_base_query_non_json(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("| Name | Status |\n| Task 1 | done |")
+        result = cli.base_query(path="file.base", output_format="md")
+        assert "Task 1" in result
+        assert isinstance(result, str)

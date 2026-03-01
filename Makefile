@@ -38,7 +38,7 @@ test-unit:
 	uv run pytest tests/ -m "not e2e" -v
 
 test-e2e:
-	uv run pytest tests/e2e/ -v -m e2e
+	OBSIDIAN_E2E=1 uv run pytest tests/e2e/ -v -m e2e
 
 test-cov:
 	uv run pytest tests/ -m "not e2e" --cov=src/obsidian_blade_mcp --cov-report=term-missing -v

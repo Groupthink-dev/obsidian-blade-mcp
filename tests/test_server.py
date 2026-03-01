@@ -206,3 +206,185 @@ class TestVaultProperties:
 
         result = await vault_property_remove(name="old_field", file="Test")
         assert "Removed" in result
+
+
+class TestVaultSearch:
+    """Test vault_search tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_search_success(self, mock_get_client, sample_search_results):
+        from obsidian_blade_mcp.server import vault_search
+
+        mock_client = MagicMock()
+        mock_client.search.return_value = sample_search_results
+        mock_get_client.return_value = mock_client
+
+        result = await vault_search(query="Docker")
+        assert "Docker.md" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_search_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_search
+
+        mock_client = MagicMock()
+        mock_client.search.return_value = []
+        mock_get_client.return_value = mock_client
+
+        result = await vault_search(query="nonexistent")
+        assert "No results" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_search_with_limit(self, mock_get_client, sample_search_results):
+        from obsidian_blade_mcp.server import vault_search
+
+        mock_client = MagicMock()
+        mock_client.search.return_value = sample_search_results
+        mock_get_client.return_value = mock_client
+
+        result = await vault_search(query="test", limit=1)
+        assert "2 more" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_search_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianNotRunningError
+        from obsidian_blade_mcp.server import vault_search
+
+        mock_client = MagicMock()
+        mock_client.search.side_effect = ObsidianNotRunningError("not running")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_search(query="test")
+        assert "Error" in result
+
+
+class TestVaultSearchContext:
+    """Test vault_search_context tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_search_context_success(self, mock_get_client, sample_search_context):
+        from obsidian_blade_mcp.server import vault_search_context
+
+        mock_client = MagicMock()
+        mock_client.search_context.return_value = sample_search_context
+        mock_get_client.return_value = mock_client
+
+        result = await vault_search_context(query="Docker")
+        assert "Docker.md:5:" in result
+        assert "Docker is a containerization" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_search_context_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_search_context
+
+        mock_client = MagicMock()
+        mock_client.search_context.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_search_context(query="nonexistent")
+        assert "No results" in result
+
+
+class TestVaultTags:
+    """Test vault_tags tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tags_success(self, mock_get_client, sample_tags):
+        from obsidian_blade_mcp.server import vault_tags
+
+        mock_client = MagicMock()
+        mock_client.tags.return_value = sample_tags
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tags()
+        assert "#IT/software/Docker (15)" in result
+        assert "#PKM/workflow (42)" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tags_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_tags
+
+        mock_client = MagicMock()
+        mock_client.tags.return_value = []
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tags()
+        assert "No tags" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tags_with_limit(self, mock_get_client, sample_tags):
+        from obsidian_blade_mcp.server import vault_tags
+
+        mock_client = MagicMock()
+        mock_client.tags.return_value = sample_tags
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tags(limit=2)
+        assert "2 more tags" in result
+
+
+class TestVaultTag:
+    """Test vault_tag tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tag_success(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_tag
+
+        mock_client = MagicMock()
+        mock_client.tag.return_value = "atlas/cards/Docker.md\nspaces/note.md"
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tag(name="#IT/software")
+        assert "Docker.md" in result
+
+
+class TestVaultBases:
+    """Test vault_bases tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_bases_success(self, mock_get_client, sample_bases):
+        from obsidian_blade_mcp.server import vault_bases
+
+        mock_client = MagicMock()
+        mock_client.bases.return_value = sample_bases
+        mock_get_client.return_value = mock_client
+
+        result = await vault_bases()
+        assert "jobs.base" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_bases_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_bases
+
+        mock_client = MagicMock()
+        mock_client.bases.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_bases()
+        assert "No files" in result
+
+
+class TestVaultBaseQuery:
+    """Test vault_base_query tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_base_query_json(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_base_query
+
+        mock_client = MagicMock()
+        mock_client.base_query.return_value = [{"name": "Task 1", "status": "done"}]
+        mock_get_client.return_value = mock_client
+
+        result = await vault_base_query(path="file.base")
+        assert "Task 1" in result
+        assert "done" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_base_query_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_base_query
+
+        mock_client = MagicMock()
+        mock_client.base_query.return_value = []
+        mock_get_client.return_value = mock_client
+
+        result = await vault_base_query(path="file.base")
+        assert "No data" in result

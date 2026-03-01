@@ -107,3 +107,43 @@ def sample_folders() -> list[str]:
         "spaces/",
         "spaces/Systems/",
     ]
+
+
+@pytest.fixture
+def sample_search_results() -> list[str]:
+    """Sample search result paths (JSON array from CLI)."""
+    return [
+        "atlas/cards/Docker.md",
+        "spaces/Systems/Areas/Information Infrastructure/efforts/Declarative Infrastructure.md",
+        "+/ingest/raw-capture.md",
+    ]
+
+
+@pytest.fixture
+def sample_search_context() -> str:
+    """Sample search:context output (text format)."""
+    return (
+        "atlas/cards/Docker.md:5: Docker is a containerization platform\n"
+        "atlas/cards/Docker.md:12: Use Docker for reproducible builds\n"
+        "spaces/Systems/note.md:3: Docker compose configuration\n"
+    )
+
+
+@pytest.fixture
+def sample_tags() -> list[dict[str, str]]:
+    """Sample tags listing (JSON from CLI)."""
+    return [
+        {"tag": "#IT/software/Docker", "count": "15"},
+        {"tag": "#IT/networking/Tailscale", "count": "8"},
+        {"tag": "#PKM/workflow", "count": "42"},
+        {"tag": "#on/health", "count": "7"},
+    ]
+
+
+@pytest.fixture
+def sample_bases() -> str:
+    """Sample bases listing (newline-delimited paths from CLI)."""
+    return (
+        "spaces/Systems/Areas/Knowledge Management/efforts/Digital Assistant/Digital Assistant - jobs.base\n"
+        "spaces/Systems/Areas/Knowledge Management/efforts/Digital Assistant/Agentic MVP Roadmap.base\n"
+    )

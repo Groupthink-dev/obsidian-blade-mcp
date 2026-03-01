@@ -129,6 +129,91 @@ def format_vault_info(info: dict[str, Any] | str) -> str:
     return "\n".join(lines) if lines else str(info)
 
 
+def format_search_results(
+    results: list[str] | str,
+    limit: int = DEFAULT_LIMIT,
+) -> str:
+    """Format search results (JSON path array or string fallback).
+
+    The CLI returns a JSON array of path strings for ``search format=json``.
+    Falls back to newline-delimited string if JSON parsing failed in client.
+    """
+    if isinstance(results, str):
+        paths = [line.strip() for line in results.strip().split("\n") if line.strip()]
+    elif isinstance(results, list):
+        paths = [str(p) for p in results]
+    else:
+        return str(results)
+
+    if not paths:
+        return "No results found."
+
+    total = len(paths)
+    shown = paths[:limit]
+    lines = list(shown)
+
+    if total > len(shown):
+        lines.append(f"… {total - len(shown)} more (use vault_search_context for detail)")
+
+    return "\n".join(lines)
+
+
+def format_search_context(
+    text: str,
+    limit: int = DEFAULT_LIMIT,
+) -> str:
+    """Format search context results (``path:line: text`` per match).
+
+    Each line from the CLI is ``path:linenum: matching text``. Truncate to
+    ``limit`` matches.
+    """
+    if not text or not text.strip():
+        return "No results found."
+
+    lines = [line for line in text.strip().split("\n") if line.strip()]
+    total = len(lines)
+    shown = lines[:limit]
+
+    result_lines = list(shown)
+    if total > len(shown):
+        result_lines.append(f"… {total - len(shown)} more matches")
+
+    return "\n".join(result_lines)
+
+
+def format_tag_list(
+    tags: list[dict[str, str]] | str,
+    limit: int = DEFAULT_LIMIT,
+) -> str:
+    """Format tag listing with counts.
+
+    Input: JSON array of ``{"tag": "#name", "count": "N"}`` objects.
+    Output: ``#tag (N)`` per line, truncated to limit.
+    """
+    if isinstance(tags, str):
+        # Fallback: plaintext
+        lines = [line.strip() for line in tags.strip().split("\n") if line.strip()]
+        if not lines:
+            return "No tags found."
+        total = len(lines)
+        shown = lines[:limit]
+        if total > len(shown):
+            shown.append(f"… {total - len(shown)} more tags")
+        return "\n".join(shown)
+
+    if not tags:
+        return "No tags found."
+
+    total = len(tags)
+    visible = tags[:limit]
+    formatted = [f"{t.get('tag', '?')} ({t.get('count', '0')})" for t in visible]
+
+    if total > len(visible):
+        formatted.append(f"… {total - len(visible)} more tags")
+
+    return "\n".join(formatted)
+
+
 def truncate_content(content: str, max_lines: int = 100) -> str:
     """Truncate long content with annotation."""
     lines = content.split("\n")

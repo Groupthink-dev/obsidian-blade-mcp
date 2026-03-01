@@ -801,10 +801,9 @@ wheels = [
 
 [[package]]
 name = "obsidian-blade-mcp"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "click" },
     { name = "fastmcp" },
     { name = "httpx" },
 ]
@@ -824,7 +823,6 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "click", specifier = ">=8.1.0" },
     { name = "fastmcp", specifier = ">=2.0.0" },
     { name = "httpx", specifier = ">=0.28.1" },
 ]

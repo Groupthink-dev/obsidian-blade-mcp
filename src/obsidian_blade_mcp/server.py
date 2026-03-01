@@ -19,6 +19,9 @@ from obsidian_blade_mcp.formatters import (
     format_file_list,
     format_folder_list,
     format_properties,
+    format_search_context,
+    format_search_results,
+    format_tag_list,
     format_vault_info,
     truncate_content,
 )
@@ -225,17 +228,18 @@ async def vault_prepend(
 
 @mcp.tool
 async def vault_files(
-    path: Annotated[str | None, Field(description="Filter to a folder path (e.g., 'spaces/Systems/')")] = None,
+    folder: Annotated[str | None, Field(description="Filter to a folder path (e.g., 'spaces/Systems/')")] = None,
+    ext: Annotated[str | None, Field(description="Filter by file extension (e.g., 'md', 'canvas', 'base')")] = None,
     limit: Annotated[int, Field(description="Max files to return (default: 20)")] = DEFAULT_LIMIT,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
-    """List files in the vault, optionally filtered to a folder.
+    """List files in the vault, optionally filtered to a folder or extension.
 
     Returns file paths sorted by modification time (most recent first).
     Use ``limit`` to control output size for token efficiency.
     """
     try:
-        result = await _run(_get_client().files, path=path, limit=limit, vault=vault)
+        result = await _run(_get_client().files, folder=folder, ext=ext, limit=limit, vault=vault)
         return format_file_list(_to_list(result), limit=limit)
     except ObsidianCLIError as e:
         return _error_response(e)
@@ -402,6 +406,201 @@ async def vault_properties(
         return _error_response(e)
     except Exception as e:
         logger.exception("Unexpected error in vault_properties")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# SEARCH TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_search(
+    query: Annotated[str, Field(description="Search query string")],
+    path: Annotated[str | None, Field(description="Limit search to a folder path")] = None,
+    case_sensitive: Annotated[bool, Field(description="Case-sensitive search (default: false)")] = False,
+    limit: Annotated[int, Field(description="Max results to return (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Search vault for notes matching a query. Returns matching file paths.
+
+    Use ``vault_search_context`` for matching lines with context.
+    ``limit`` is applied client-side (the CLI's limit= is broken).
+    """
+    try:
+        result = await _run(_get_client().search, query=query, path=path, case_sensitive=case_sensitive, vault=vault)
+        return format_search_results(result, limit=limit)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_search")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_search_context(
+    query: Annotated[str, Field(description="Search query string")],
+    path: Annotated[str | None, Field(description="Limit search to a folder path")] = None,
+    case_sensitive: Annotated[bool, Field(description="Case-sensitive search (default: false)")] = False,
+    limit: Annotated[int, Field(description="Max matching lines to return (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Search vault with matching context lines (path:line: text per match).
+
+    More detailed than ``vault_search`` — shows where each match occurs.
+    ``limit`` is applied client-side (the CLI's limit= is broken).
+    """
+    try:
+        result = await _run(
+            _get_client().search_context, query=query, path=path, case_sensitive=case_sensitive, vault=vault
+        )
+        return format_search_context(result, limit=limit)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_search_context")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# TAG TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_tags(
+    file: Annotated[str | None, Field(description="Note name to get tags for (all tags if omitted)")] = None,
+    path: Annotated[str | None, Field(description="Filter tags to a folder path")] = None,
+    sort_by_count: Annotated[bool, Field(description="Sort by usage count descending")] = False,
+    limit: Annotated[int, Field(description="Max tags to return (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List tags in the vault (or for a specific file) with usage counts.
+
+    Returns ``#tag (count)`` per line. Use ``sort_by_count=true`` to see
+    most-used tags first.
+    """
+    try:
+        result = await _run(_get_client().tags, file=file, path=path, sort_by_count=sort_by_count, vault=vault)
+        return format_tag_list(result, limit=limit)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_tags")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_tag(
+    name: Annotated[str, Field(description="Tag name (with or without #, e.g., '#IT/software' or 'IT/software')")],
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List all files with a specific tag.
+
+    Returns file paths, one per line.
+    """
+    try:
+        result = await _run(_get_client().tag, name=name, vault=vault)
+        return format_file_list(_to_list(result))
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_tag")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# BASE TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_bases(
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List all ``.base`` files in the vault.
+
+    Base files are Obsidian's structured data views (tables, cards, etc.).
+    """
+    try:
+        result = await _run(_get_client().bases, vault=vault)
+        return format_file_list(_to_list(result))
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_bases")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_base_views(
+    file: Annotated[str | None, Field(description="Base name (resolved like a wikilink)")] = None,
+    path: Annotated[str | None, Field(description="Exact path to .base file")] = None,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List views in a base file.
+
+    Note: The CLI requires the base to be the active (open) file in Obsidian.
+    This limits utility for programmatic access — prefer ``vault_base_query``
+    with a known view name instead.
+    """
+    try:
+        result = await _run(_get_client().base_views, file=file, path=path, vault=vault)
+        if isinstance(result, list):
+            if not result:
+                return "No views found."
+            return "\n".join(str(v) for v in result)
+        return str(result)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_base_views")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_base_query(
+    file: Annotated[str | None, Field(description="Base name (wikilink resolution — may resolve to .md)")] = None,
+    path: Annotated[str | None, Field(description="Exact path to .base file (preferred — use .base extension)")] = None,
+    view: Annotated[str | None, Field(description="Named view within the base")] = None,
+    output_format: Annotated[
+        str, Field(description="Output format: json, md, csv, tsv, paths (default: json)")
+    ] = "json",
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Query a base file for its structured data.
+
+    Prefer ``path=`` with ``.base`` extension for reliable targeting (``file=``
+    uses wikilink resolution which may resolve to ``.md`` instead).
+    Use ``view=`` to select a specific named view.
+    """
+    try:
+        result = await _run(
+            _get_client().base_query,
+            file=file,
+            path=path,
+            view=view,
+            output_format=output_format,
+            vault=vault,
+        )
+        if isinstance(result, str):
+            return result.strip() if result.strip() else "No data returned."
+        if isinstance(result, list):
+            if not result:
+                return "No data returned."
+            # JSON output — format concisely
+            import json
+
+            return json.dumps(result, indent=2)
+        if isinstance(result, dict):
+            import json
+
+            return json.dumps(result, indent=2)
+        return str(result)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_base_query")
         return f"Error: {e}"
 
 

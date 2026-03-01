@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
 description: Obsidian vault operations via CLI — read, write, search, properties, structure
-version: 0.1.0
+version: 0.2.0
 permissions:
   read:
     - vault_info
@@ -12,6 +12,13 @@ permissions:
     - vault_recents
     - vault_property_read
     - vault_properties
+    - vault_search
+    - vault_search_context
+    - vault_tags
+    - vault_tag
+    - vault_bases
+    - vault_base_views
+    - vault_base_query
   write:
     - vault_create
     - vault_append
@@ -29,6 +36,8 @@ permissions:
 3. **Use `vault_property_read` for single properties** — don't load all properties when you need one
 4. **Use `vault_properties` for metadata overviews** — more efficient than reading the full note
 5. **Prefer `file=` over `path=`** — name-based resolution is shorter to type
+6. **Use `vault_search` before `vault_search_context`** — paths-only is cheaper; escalate to context only when needed
+7. **Use `vault_bases` to discover .base files** — then `vault_base_query path=X` with the exact path
 
 ## Quick Start — 5 Most Common Operations
 
@@ -37,7 +46,7 @@ vault_read file="My Note"              → Read note content
 vault_create name="New" content="..."  → Create new note
 vault_append content="..." file="Log"  → Append to existing note
 vault_property_set name="status" value="done" file="Task"  → Set property
-vault_files path="spaces/" limit=10    → Browse folder
+vault_search query="Docker" limit=10   → Find notes by content
 ```
 
 ## Tool Reference
@@ -54,10 +63,23 @@ vault_files path="spaces/" limit=10    → Browse folder
 - **vault_prepend** — Add after frontmatter. Status blocks, headings.
 
 ### Discovery
-- **vault_files** — List files, optionally in a folder. Use `limit=`.
+- **vault_files** — List files, optionally in a folder. Use `folder=`, `ext=`, `limit=`.
 - **vault_file_info** — Metadata for one file (size, timestamps).
 - **vault_folders** — All folders. Understand vault structure.
 - **vault_recents** — Recently modified files. What's been active.
+
+### Search
+- **vault_search** — Find notes matching a query. Returns file paths. Use `path=` to scope.
+- **vault_search_context** — Search with matching lines (`path:line: text`). More detail than `vault_search`.
+
+### Tags
+- **vault_tags** — List tags with usage counts. Use `sort_by_count=true` for most-used first.
+- **vault_tag** — List all files with a specific tag.
+
+### Bases
+- **vault_bases** — List all `.base` files in the vault.
+- **vault_base_views** — List views in a base (requires base to be active file).
+- **vault_base_query** — Query a base for structured data. Use `path=` with `.base` extension.
 
 ### Properties (Atomic Frontmatter)
 - **vault_property_read** — Read one property value.
@@ -70,8 +92,23 @@ vault_files path="spaces/" limit=10    → Browse folder
 ### Daily Digest Data Gathering
 ```
 1. vault_recents limit=10               → What changed recently
-2. vault_files path="+/ingest/" limit=20 → Inbox items
+2. vault_files folder="+/ingest/" limit=20 → Inbox items
 3. vault_property_read name="status" file="Effort Note"  → Check effort status
+```
+
+### Find and Read Notes
+```
+1. vault_search query="Docker" limit=5   → Find notes mentioning Docker
+2. vault_search_context query="Docker" path="atlas/" limit=10  → See matching lines
+3. vault_read file="Docker"              → Read the full note
+```
+
+### Explore Tags and Bases
+```
+1. vault_tags sort_by_count=true limit=10  → Most-used tags
+2. vault_tag name="#IT/software"           → Files with that tag
+3. vault_bases                             → List all .base files
+4. vault_base_query path="efforts/Digital Assistant - jobs.base" view="Phase 5"  → Query a base
 ```
 
 ### Create a New Effort Note
@@ -96,9 +133,11 @@ vault_files path="spaces/" limit=10    → Browse folder
 |-----------|-------------|---------|
 | `file` | Note name (wikilink resolution) | `file="My Note"` |
 | `path` | Exact path from vault root | `path="spaces/Systems/note.md"` |
+| `folder` | Filter to folder (vault_files) | `folder="spaces/"` |
 | `vault` | Target a different vault | `vault="other-vault"` |
 | `limit` | Cap list results (default: 20) | `limit=10` |
-| `name` | New note name (vault_create) | `name="New Note"` |
+| `query` | Search query string | `query="Docker"` |
+| `name` | New note name / tag name | `name="New Note"` |
 | `content` | Markdown content | `content="# Hello\nBody"` |
 
 ## Prerequisites

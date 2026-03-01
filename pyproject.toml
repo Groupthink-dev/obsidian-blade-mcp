@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-blade-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Obsidian CLI MCP Server — precision vault tools via subprocess"
 readme = "README.md"
 license = {text = "MIT"}
@@ -18,7 +18,6 @@ classifiers = [
 dependencies = [
     "fastmcp>=2.0.0",
     "httpx>=0.28.1",
-    "click>=8.1.0",
 ]
 
 [dependency-groups]

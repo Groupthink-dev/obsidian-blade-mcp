@@ -7,6 +7,9 @@ from obsidian_blade_mcp.formatters import (
     format_file_list,
     format_folder_list,
     format_properties,
+    format_search_context,
+    format_search_results,
+    format_tag_list,
     format_vault_info,
     truncate_content,
 )
@@ -124,3 +127,65 @@ class TestTruncateContent:
         assert "Line 0" in result
         assert "Line 99" in result
         assert "Line 100" not in result.split("…")[0]
+
+
+class TestFormatSearchResults:
+    """Test search result formatting."""
+
+    def test_empty_results(self):
+        assert format_search_results([]) == "No results found."
+
+    def test_list_results(self, sample_search_results):
+        result = format_search_results(sample_search_results)
+        assert "Docker.md" in result
+        assert "raw-capture.md" in result
+
+    def test_string_fallback(self):
+        text = "atlas/cards/Docker.md\nspaces/note.md\n"
+        result = format_search_results(text)
+        assert "Docker.md" in result
+        assert "note.md" in result
+
+    def test_limit_truncation(self, sample_search_results):
+        result = format_search_results(sample_search_results, limit=1)
+        assert "2 more" in result
+
+    def test_empty_string(self):
+        assert format_search_results("") == "No results found."
+
+
+class TestFormatSearchContext:
+    """Test search context formatting."""
+
+    def test_empty(self):
+        assert format_search_context("") == "No results found."
+
+    def test_normal(self, sample_search_context):
+        result = format_search_context(sample_search_context)
+        assert "Docker.md:5:" in result
+        assert "Docker.md:12:" in result
+
+    def test_limit(self, sample_search_context):
+        result = format_search_context(sample_search_context, limit=1)
+        assert "2 more matches" in result
+
+
+class TestFormatTagList:
+    """Test tag list formatting."""
+
+    def test_empty(self):
+        assert format_tag_list([]) == "No tags found."
+
+    def test_normal(self, sample_tags):
+        result = format_tag_list(sample_tags)
+        assert "#IT/software/Docker (15)" in result
+        assert "#PKM/workflow (42)" in result
+
+    def test_limit(self, sample_tags):
+        result = format_tag_list(sample_tags, limit=2)
+        assert "2 more tags" in result
+
+    def test_string_fallback(self):
+        text = "#IT/software\n#PKM/workflow\n"
+        result = format_tag_list(text)
+        assert "#IT/software" in result
