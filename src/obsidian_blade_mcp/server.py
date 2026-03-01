@@ -6,9 +6,10 @@ concise output, capped lists, null-field omission.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -33,6 +34,7 @@ def _to_list(result: object) -> list[str]:
     if isinstance(result, str):
         return [line for line in result.strip().split("\n") if line.strip()]
     return [str(result)]
+
 
 # ---------------------------------------------------------------------------
 # Transport configuration
@@ -65,6 +67,7 @@ def _get_client() -> ObsidianCLI:
     global _client  # noqa: PLW0603
     if _client is None:
         _client = ObsidianCLI()
+        logger.info("Obsidian CLI: binary=%s, vault=%s", _client.cli_path, _client.vault_name or "(default)")
     return _client
 
 
@@ -73,13 +76,22 @@ def _error_response(e: ObsidianCLIError) -> str:
     return f"Error: {e}"
 
 
+async def _run(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Run a blocking client method in a thread to avoid blocking the event loop.
+
+    This is critical for MCP-over-stdio: if the event loop is blocked during a
+    long subprocess timeout, the transport degrades and subsequent responses fail.
+    """
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+
 # ===========================================================================
 # META TOOLS
 # ===========================================================================
 
 
 @mcp.tool
-def vault_info(
+async def vault_info(
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Get vault metadata: name, path, file/note counts.
@@ -87,10 +99,13 @@ def vault_info(
     Use this as a health check and to confirm which vault you're targeting.
     """
     try:
-        result = _get_client().vault_info(vault=vault)
+        result = await _run(_get_client().vault_info, vault=vault)
         return format_vault_info(result)
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_info")
+        return f"Error: {e}"
 
 
 # ===========================================================================
@@ -99,7 +114,7 @@ def vault_info(
 
 
 @mcp.tool
-def vault_read(
+async def vault_read(
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root (e.g., 'folder/note.md')")] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
@@ -110,10 +125,13 @@ def vault_read(
     Without either, reads the currently active note in Obsidian.
     """
     try:
-        content = _get_client().read(file=file, path=path, vault=vault)
+        content = await _run(_get_client().read, file=file, path=path, vault=vault)
         return truncate_content(content)
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_read")
+        return f"Error: {e}"
 
 
 # ===========================================================================
@@ -122,7 +140,7 @@ def vault_read(
 
 
 @mcp.tool
-def vault_create(
+async def vault_create(
     name: Annotated[str, Field(description="Note name (without .md extension)")],
     content: Annotated[str | None, Field(description="Note content (Markdown). Use \\n for newlines.")] = None,
     path: Annotated[str | None, Field(description="Folder path to create in (e.g., 'spaces/Systems/')")] = None,
@@ -136,7 +154,8 @@ def vault_create(
     Specify ``path`` for subfolder placement. Use ``template`` to apply a vault template.
     """
     try:
-        result = _get_client().create(
+        result = await _run(
+            _get_client().create,
             name=name,
             content=content,
             path=path,
@@ -144,13 +163,17 @@ def vault_create(
             overwrite=overwrite,
             vault=vault,
         )
-        return result.strip() if result.strip() else f"Created: {name}"
+        result_str = str(result).strip()
+        return result_str if result_str else f"Created: {name}"
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_create")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_append(
+async def vault_append(
     content: Annotated[str, Field(description="Content to append (Markdown). Use \\n for newlines.")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
@@ -161,15 +184,19 @@ def vault_append(
     Safe for human-written notes — adds content without modifying existing body text.
     """
     try:
-        result = _get_client().append(content=content, file=file, path=path, vault=vault)
+        result = await _run(_get_client().append, content=content, file=file, path=path, vault=vault)
         target = file or path or "active note"
-        return result.strip() if result.strip() else f"Appended to: {target}"
+        result_str = str(result).strip()
+        return result_str if result_str else f"Appended to: {target}"
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_append")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_prepend(
+async def vault_prepend(
     content: Annotated[str, Field(description="Content to prepend (Markdown). Use \\n for newlines.")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
@@ -180,11 +207,15 @@ def vault_prepend(
     Useful for adding headings or status blocks at the top of a note.
     """
     try:
-        result = _get_client().prepend(content=content, file=file, path=path, vault=vault)
+        result = await _run(_get_client().prepend, content=content, file=file, path=path, vault=vault)
         target = file or path or "active note"
-        return result.strip() if result.strip() else f"Prepended to: {target}"
+        result_str = str(result).strip()
+        return result_str if result_str else f"Prepended to: {target}"
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_prepend")
+        return f"Error: {e}"
 
 
 # ===========================================================================
@@ -193,7 +224,7 @@ def vault_prepend(
 
 
 @mcp.tool
-def vault_files(
+async def vault_files(
     path: Annotated[str | None, Field(description="Filter to a folder path (e.g., 'spaces/Systems/')")] = None,
     limit: Annotated[int, Field(description="Max files to return (default: 20)")] = DEFAULT_LIMIT,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
@@ -204,14 +235,17 @@ def vault_files(
     Use ``limit`` to control output size for token efficiency.
     """
     try:
-        result = _get_client().files(path=path, limit=limit, vault=vault)
+        result = await _run(_get_client().files, path=path, limit=limit, vault=vault)
         return format_file_list(_to_list(result), limit=limit)
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_files")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_file_info(
+async def vault_file_info(
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
@@ -222,16 +256,19 @@ def vault_file_info(
     without loading full content.
     """
     try:
-        result = _get_client().file_info(file=file, path=path, vault=vault)
+        result = await _run(_get_client().file_info, file=file, path=path, vault=vault)
         if isinstance(result, dict):
             return format_properties(result)
         return str(result)
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_file_info")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_folders(
+async def vault_folders(
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """List all folders in the vault.
@@ -240,14 +277,17 @@ def vault_folders(
     for file creation or listing.
     """
     try:
-        result = _get_client().folders(vault=vault)
+        result = await _run(_get_client().folders, vault=vault)
         return format_folder_list(_to_list(result))
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_folders")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_recents(
+async def vault_recents(
     limit: Annotated[int, Field(description="Max files to return (default: 20)")] = DEFAULT_LIMIT,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
@@ -257,10 +297,13 @@ def vault_recents(
     what's been worked on recently.
     """
     try:
-        result = _get_client().recents(limit=limit, vault=vault)
+        result = await _run(_get_client().recents, limit=limit, vault=vault)
         return format_file_list(_to_list(result), limit=limit)
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_recents")
+        return f"Error: {e}"
 
 
 # ===========================================================================
@@ -269,7 +312,7 @@ def vault_recents(
 
 
 @mcp.tool
-def vault_property_read(
+async def vault_property_read(
     name: Annotated[str, Field(description="Property name to read (e.g., 'status', 'kind', 'tags')")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
@@ -281,17 +324,20 @@ def vault_property_read(
     to see all properties at once.
     """
     try:
-        result = _get_client().property_read(name=name, file=file, path=path, vault=vault)
+        result = await _run(_get_client().property_read, name=name, file=file, path=path, vault=vault)
         if isinstance(result, dict):
             value = result.get("value", result.get(name, result))
             return f"{name}: {value}"
         return f"{name}: {result}"
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_property_read")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_property_set(
+async def vault_property_set(
     name: Annotated[str, Field(description="Property name to set (e.g., 'status', 'kind')")],
     value: Annotated[str, Field(description="Property value to set")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
@@ -304,15 +350,19 @@ def vault_property_set(
     This is an atomic operation — safer than editing YAML frontmatter by hand.
     """
     try:
-        result = _get_client().property_set(name=name, value=value, file=file, path=path, vault=vault)
+        result = await _run(_get_client().property_set, name=name, value=value, file=file, path=path, vault=vault)
         target = file or path or "active note"
-        return result.strip() if result.strip() else f"Set {name}={value} on {target}"
+        result_str = str(result).strip()
+        return result_str if result_str else f"Set {name}={value} on {target}"
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_property_set")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_property_remove(
+async def vault_property_remove(
     name: Annotated[str, Field(description="Property name to remove")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
@@ -323,15 +373,19 @@ def vault_property_remove(
     Deletes the property key and value from the note's frontmatter.
     """
     try:
-        result = _get_client().property_remove(name=name, file=file, path=path, vault=vault)
+        result = await _run(_get_client().property_remove, name=name, file=file, path=path, vault=vault)
         target = file or path or "active note"
-        return result.strip() if result.strip() else f"Removed {name} from {target}"
+        result_str = str(result).strip()
+        return result_str if result_str else f"Removed {name} from {target}"
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_property_remove")
+        return f"Error: {e}"
 
 
 @mcp.tool
-def vault_properties(
+async def vault_properties(
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
@@ -342,10 +396,13 @@ def vault_properties(
     More efficient than reading the full note when you only need metadata.
     """
     try:
-        result = _get_client().properties(file=file, path=path, vault=vault)
+        result = await _run(_get_client().properties, file=file, path=path, vault=vault)
         return format_properties(result)
     except ObsidianCLIError as e:
         return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_properties")
+        return f"Error: {e}"
 
 
 # ===========================================================================

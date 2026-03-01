@@ -8,6 +8,7 @@ Design principles:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from obsidian_blade_mcp.models import DEFAULT_LIMIT
@@ -31,7 +32,7 @@ def format_file_concise(entry: dict[str, Any] | str) -> str:
 
 
 def format_file_list(
-    files: list[dict[str, Any] | str],
+    files: Sequence[dict[str, Any] | str],
     limit: int = DEFAULT_LIMIT,
     total: int | None = None,
 ) -> str:
