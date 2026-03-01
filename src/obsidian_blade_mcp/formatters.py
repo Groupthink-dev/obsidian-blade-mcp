@@ -214,6 +214,76 @@ def format_tag_list(
     return "\n".join(formatted)
 
 
+def format_outline(
+    headings: list[dict[str, Any]] | str,
+    limit: int = DEFAULT_LIMIT,
+) -> str:
+    """Format a heading outline as an indented tree.
+
+    Input: JSON list of ``{"level": N, "heading": "...", "line": N}`` or string.
+    Output: indented heading tree, e.g. ``  ## Heading (line 5)``.
+    String fallback: return as-is (already tree-formatted by CLI).
+    """
+    if isinstance(headings, str):
+        return headings.strip() if headings.strip() else "No headings found."
+
+    if not headings:
+        return "No headings found."
+
+    total = len(headings)
+    visible = headings[:limit]
+    lines: list[str] = []
+    for h in visible:
+        level = h.get("level", 1)
+        heading = h.get("heading", "?")
+        line_num = h.get("line")
+        indent = "  " * (level - 1)
+        hashes = "#" * level
+        suffix = f" (line {line_num})" if line_num is not None else ""
+        lines.append(f"{indent}{hashes} {heading}{suffix}")
+
+    if total > len(visible):
+        lines.append(f"… {total - len(visible)} more headings")
+
+    return "\n".join(lines)
+
+
+def format_link_list(
+    items: list[str] | list[dict[str, Any]] | str,
+    limit: int = DEFAULT_LIMIT,
+    label: str = "links",
+) -> str:
+    """Format a list of links, backlinks, aliases, or unresolved links.
+
+    Input: list of strings, list of dicts (unresolved has ``{"link": "..."}``),
+    or newline-delimited string.
+    Output: one item per line, capped at limit, with "N more" annotation.
+    """
+    if isinstance(items, str):
+        entries = [line.strip() for line in items.strip().split("\n") if line.strip()]
+    elif isinstance(items, list):
+        entries = []
+        for item in items:
+            if isinstance(item, dict):
+                entries.append(str(item.get("link") or item.get("path") or item))
+            else:
+                entries.append(str(item))
+    else:
+        return str(items)
+
+    if not entries:
+        return f"No {label} found."
+
+    total = len(entries)
+    shown = entries[:limit]
+    lines = list(shown)
+
+    if total > len(shown):
+        lines.append(f"… {total - len(shown)} more {label}")
+
+    return "\n".join(lines)
+
+
 def truncate_content(content: str, max_lines: int = 100) -> str:
     """Truncate long content with annotation."""
     lines = content.split("\n")

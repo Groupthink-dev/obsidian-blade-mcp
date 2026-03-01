@@ -147,3 +147,26 @@ def sample_bases() -> str:
         "spaces/Systems/Areas/Knowledge Management/efforts/Digital Assistant/Digital Assistant - jobs.base\n"
         "spaces/Systems/Areas/Knowledge Management/efforts/Digital Assistant/Agentic MVP Roadmap.base\n"
     )
+
+
+@pytest.fixture
+def sample_outline() -> list[dict[str, Any]]:
+    """Sample outline JSON response."""
+    return [
+        {"level": 1, "heading": "My Note", "line": 1},
+        {"level": 2, "heading": "Introduction", "line": 5},
+        {"level": 2, "heading": "Details", "line": 12},
+        {"level": 3, "heading": "Sub-detail", "line": 15},
+        {"level": 2, "heading": "Conclusion", "line": 25},
+    ]
+
+
+@pytest.fixture
+def sample_unresolved() -> list[dict[str, str]]:
+    """Sample unresolved links JSON response."""
+    return [
+        {"link": "Missing Note"},
+        {"link": "Another Missing"},
+        {"link": "Broken Reference"},
+        {"link": "Dead Link"},
+    ]

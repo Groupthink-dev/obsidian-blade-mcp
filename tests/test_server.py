@@ -388,3 +388,199 @@ class TestVaultBaseQuery:
 
         result = await vault_base_query(path="file.base")
         assert "No data" in result
+
+
+# ===========================================================================
+# Phase 3 — Link & Structure Tools
+# ===========================================================================
+
+
+class TestVaultOutline:
+    """Test vault_outline tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_outline_success(self, mock_get_client, sample_outline):
+        from obsidian_blade_mcp.server import vault_outline
+
+        mock_client = MagicMock()
+        mock_client.outline.return_value = sample_outline
+        mock_get_client.return_value = mock_client
+
+        result = await vault_outline(file="My Note")
+        assert "# My Note" in result
+        assert "## Introduction" in result
+        assert "### Sub-detail" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_outline_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianFileNotFoundError
+        from obsidian_blade_mcp.server import vault_outline
+
+        mock_client = MagicMock()
+        mock_client.outline.side_effect = ObsidianFileNotFoundError("not found")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_outline(file="Missing")
+        assert "Error" in result
+
+
+class TestVaultLinks:
+    """Test vault_links tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_links_success(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_links
+
+        mock_client = MagicMock()
+        mock_client.links.return_value = "Target A\nTarget B\nTarget C"
+        mock_get_client.return_value = mock_client
+
+        result = await vault_links(file="My Note")
+        assert "Target A" in result
+        assert "Target B" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_links_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_links
+
+        mock_client = MagicMock()
+        mock_client.links.return_value = "No links found."
+        mock_get_client.return_value = mock_client
+
+        result = await vault_links(file="Isolated")
+        assert "No links found." in result
+
+
+class TestVaultBacklinks:
+    """Test vault_backlinks tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_backlinks_success(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_backlinks
+
+        mock_client = MagicMock()
+        mock_client.backlinks.return_value = "Source A\nSource B"
+        mock_get_client.return_value = mock_client
+
+        result = await vault_backlinks(file="My Note")
+        assert "Source A" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_backlinks_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_backlinks
+
+        mock_client = MagicMock()
+        mock_client.backlinks.return_value = "No backlinks found."
+        mock_get_client.return_value = mock_client
+
+        result = await vault_backlinks(file="Orphan")
+        assert "No backlinks found." in result
+
+
+class TestVaultAliases:
+    """Test vault_aliases tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_aliases_success(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_aliases
+
+        mock_client = MagicMock()
+        mock_client.aliases.return_value = "Alias One\nAlias Two"
+        mock_get_client.return_value = mock_client
+
+        result = await vault_aliases(file="My Note")
+        assert "Alias One" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_aliases_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_aliases
+
+        mock_client = MagicMock()
+        mock_client.aliases.return_value = "No aliases found."
+        mock_get_client.return_value = mock_client
+
+        result = await vault_aliases(file="No Aliases")
+        assert "No aliases found." in result
+
+
+class TestVaultUnresolved:
+    """Test vault_unresolved tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_unresolved_success(self, mock_get_client, sample_unresolved):
+        from obsidian_blade_mcp.server import vault_unresolved
+
+        mock_client = MagicMock()
+        mock_client.unresolved.return_value = sample_unresolved
+        mock_get_client.return_value = mock_client
+
+        result = await vault_unresolved(limit=2)
+        assert "Missing Note" in result
+        assert "2 more" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_unresolved_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianNotRunningError
+        from obsidian_blade_mcp.server import vault_unresolved
+
+        mock_client = MagicMock()
+        mock_client.unresolved.side_effect = ObsidianNotRunningError("not running")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_unresolved()
+        assert "Error" in result
+
+
+class TestVaultOrphans:
+    """Test vault_orphans tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_orphans_total_only(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_orphans
+
+        mock_client = MagicMock()
+        mock_client.orphans.return_value = "12271"
+        mock_get_client.return_value = mock_client
+
+        result = await vault_orphans(total_only=True)
+        assert "12271" in result
+        assert "Orphan" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_orphans_full_list(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_orphans
+
+        mock_client = MagicMock()
+        mock_client.orphans.return_value = ["notes/a.md", "notes/b.md", "notes/c.md"]
+        mock_get_client.return_value = mock_client
+
+        result = await vault_orphans(total_only=False, limit=2)
+        assert "notes/a.md" in result
+        assert "1 more" in result
+
+
+class TestVaultDeadends:
+    """Test vault_deadends tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_deadends_total_only(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_deadends
+
+        mock_client = MagicMock()
+        mock_client.deadends.return_value = "12933"
+        mock_get_client.return_value = mock_client
+
+        result = await vault_deadends(total_only=True)
+        assert "12933" in result
+        assert "Dead-end" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_deadends_full_list(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_deadends
+
+        mock_client = MagicMock()
+        mock_client.deadends.return_value = ["x.md", "y.md"]
+        mock_get_client.return_value = mock_client
+
+        result = await vault_deadends(total_only=False)
+        assert "x.md" in result

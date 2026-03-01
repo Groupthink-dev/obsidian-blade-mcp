@@ -18,6 +18,8 @@ from obsidian_blade_mcp.client import ObsidianCLI, ObsidianCLIError
 from obsidian_blade_mcp.formatters import (
     format_file_list,
     format_folder_list,
+    format_link_list,
+    format_outline,
     format_properties,
     format_search_context,
     format_search_results,
@@ -601,6 +603,169 @@ async def vault_base_query(
         return _error_response(e)
     except Exception as e:
         logger.exception("Unexpected error in vault_base_query")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# LINK & STRUCTURE TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_outline(
+    file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
+    path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Get the heading outline of a note.
+
+    Returns an indented heading tree with line numbers. Use before ``vault_read``
+    to understand note structure without loading full content.
+    """
+    try:
+        result = await _run(_get_client().outline, file=file, path=path, vault=vault)
+        return format_outline(result)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_outline")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_links(
+    file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
+    path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List outbound links from a note.
+
+    Returns link targets (notes this note links to), one per line.
+    """
+    try:
+        result = await _run(_get_client().links, file=file, path=path, vault=vault)
+        return format_link_list(_to_list(result), label="links")
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_links")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_backlinks(
+    file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
+    path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List inbound links (backlinks) to a note.
+
+    Returns source notes that link to this note, one per line.
+    """
+    try:
+        result = await _run(_get_client().backlinks, file=file, path=path, vault=vault)
+        return format_link_list(_to_list(result), label="backlinks")
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_backlinks")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_aliases(
+    file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
+    path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List aliases for a note.
+
+    Aliases are alternative names for a note used in wikilink resolution.
+    """
+    try:
+        result = await _run(_get_client().aliases, file=file, path=path, vault=vault)
+        return format_link_list(_to_list(result), label="aliases")
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_aliases")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_unresolved(
+    path: Annotated[str | None, Field(description="Scope to a folder path")] = None,
+    limit: Annotated[int, Field(description="Max results to return (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List unresolved (broken) links in the vault.
+
+    Returns wikilinks that point to notes which don't exist.
+    Use ``path=`` to scope to a folder. Large vaults may have thousands.
+    """
+    try:
+        result = await _run(_get_client().unresolved, path=path, vault=vault)
+        if isinstance(result, list):
+            return format_link_list(result, limit=limit, label="unresolved links")
+        return format_link_list(_to_list(result), limit=limit, label="unresolved links")
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_unresolved")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_orphans(
+    path: Annotated[str | None, Field(description="Scope to a folder path")] = None,
+    total_only: Annotated[
+        bool, Field(description="Return count only (default: true — full list is ~12K items)")
+    ] = True,
+    limit: Annotated[int, Field(description="Max results for full list (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List orphan notes (no inbound links).
+
+    Defaults to count-only (``total_only=true``) because the full list can be
+    massive (~12K items). Use ``path=`` to scope before requesting full list.
+    """
+    try:
+        result = await _run(_get_client().orphans, path=path, total_only=total_only, vault=vault)
+        if total_only:
+            count = str(result).strip()
+            return f"Orphan notes: {count}"
+        return format_file_list(_to_list(result), limit=limit)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_orphans")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_deadends(
+    path: Annotated[str | None, Field(description="Scope to a folder path")] = None,
+    total_only: Annotated[
+        bool, Field(description="Return count only (default: true — full list is ~12K items)")
+    ] = True,
+    limit: Annotated[int, Field(description="Max results for full list (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List dead-end notes (no outbound links).
+
+    Defaults to count-only (``total_only=true``) because the full list can be
+    massive (~12K items). Use ``path=`` to scope before requesting full list.
+    """
+    try:
+        result = await _run(_get_client().deadends, path=path, total_only=total_only, vault=vault)
+        if total_only:
+            count = str(result).strip()
+            return f"Dead-end notes: {count}"
+        return format_file_list(_to_list(result), limit=limit)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_deadends")
         return f"Error: {e}"
 
 

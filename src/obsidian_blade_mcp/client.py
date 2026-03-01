@@ -220,7 +220,7 @@ class ObsidianCLI:
         return result.stdout
 
     # Commands whose output only appears on a TTY (Obsidian CLI bug).
-    _PTY_COMMANDS = frozenset({"search", "search:context"})
+    _PTY_COMMANDS = frozenset({"search", "search:context", "unresolved"})
 
     def _run_pty(self, args: list[str], timeout: int) -> str:
         """Run a command via ``script(1)`` to force TTY output.
@@ -581,3 +581,103 @@ class ObsidianCLI:
             except (ValueError, TypeError):
                 return raw.strip()
         return self.run("base:query", params, vault)
+
+    # -------------------------------------------------------------------
+    # Convenience methods for Phase 3 tools (links & structure)
+    # -------------------------------------------------------------------
+
+    def outline(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> Any:
+        """Get the heading outline of a note.
+
+        Returns a JSON array of ``{"level": N, "heading": "...", "line": N}`` objects.
+        """
+        params: dict[str, Any] = {}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        return self.run_json("outline", params, vault)
+
+    def links(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> Any:
+        """Get outbound links from a note.
+
+        Returns newline-delimited link targets. ``run_json`` falls back to string
+        because the CLI has no JSON support for this command.
+        """
+        params: dict[str, Any] = {}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        return self.run_json("links", params, vault)
+
+    def backlinks(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> Any:
+        """Get inbound links (backlinks) to a note.
+
+        Returns newline-delimited source paths. ``run_json`` falls back to string
+        because the CLI has no JSON support for this command.
+        """
+        params: dict[str, Any] = {}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        return self.run_json("backlinks", params, vault)
+
+    def aliases(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> Any:
+        """Get aliases for a note.
+
+        Returns newline-delimited aliases. ``run_json`` falls back to string
+        because the CLI has no JSON support for this command.
+        """
+        params: dict[str, Any] = {}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        return self.run_json("aliases", params, vault)
+
+    def unresolved(self, path: str | None = None, vault: str | None = None) -> Any:
+        """Get unresolved (broken) links in the vault.
+
+        Returns a JSON array of ``{"link": "..."}`` objects. Uses PTY wrapper
+        (Electron TTY bug). No server-side limit — truncate client-side.
+        """
+        params: dict[str, Any] = {}
+        if path:
+            params["path"] = path
+        return self.run_json("unresolved", params, vault)
+
+    def orphans(
+        self, path: str | None = None, total_only: bool = True, vault: str | None = None
+    ) -> Any:
+        """Get orphan notes (no inbound links).
+
+        Args:
+            path: Scope to a folder.
+            total_only: If True, return just the count (default). The full list
+                is ~12K items and would blow the context window.
+        """
+        params: dict[str, Any] = {}
+        if path:
+            params["path"] = path
+        if total_only:
+            return self.run("orphans", params, vault, flags=["total"])
+        return self.run_json("orphans", params, vault)
+
+    def deadends(
+        self, path: str | None = None, total_only: bool = True, vault: str | None = None
+    ) -> Any:
+        """Get dead-end notes (no outbound links).
+
+        Args:
+            path: Scope to a folder.
+            total_only: If True, return just the count (default). The full list
+                is ~12K items and would blow the context window.
+        """
+        params: dict[str, Any] = {}
+        if path:
+            params["path"] = path
+        if total_only:
+            return self.run("deadends", params, vault, flags=["total"])
+        return self.run_json("deadends", params, vault)

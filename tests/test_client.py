@@ -330,3 +330,94 @@ class TestPhase2Methods:
         result = cli.base_query(path="file.base", output_format="md")
         assert "Task 1" in result
         assert isinstance(result, str)
+
+
+class TestPhase3Methods:
+    """Test Phase 3 convenience methods (links & structure)."""
+
+    def test_outline(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result(
+            '[{"level":1,"heading":"Title","line":1},{"level":2,"heading":"Section","line":5}]'
+        )
+        result = cli.outline(file="My Note")
+        assert isinstance(result, list)
+        assert result[0]["heading"] == "Title"
+
+    def test_outline_with_path(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.outline(path="atlas/cards/Docker.md")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "outline" in call_args
+        assert "path=atlas/cards/Docker.md" in call_args
+
+    def test_links(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("Target A\nTarget B")
+        result = cli.links(file="My Note")
+        assert "Target A" in result
+
+    def test_links_with_path(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("Target A")
+        cli.links(path="notes/test.md")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "links" in call_args
+        assert "path=notes/test.md" in call_args
+
+    def test_backlinks(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("Source A\nSource B")
+        result = cli.backlinks(file="My Note")
+        assert "Source A" in result
+
+    def test_backlinks_with_path(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.backlinks(path="notes/test.md")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "backlinks" in call_args
+        assert "path=notes/test.md" in call_args
+
+    def test_aliases(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("Alias One\nAlias Two")
+        result = cli.aliases(file="My Note")
+        assert "Alias One" in result
+
+    def test_aliases_with_path(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.aliases(path="notes/test.md")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "aliases" in call_args
+
+    def test_unresolved(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('[{"link":"Missing Note"}]')
+        result = cli.unresolved()
+        assert isinstance(result, list)
+        assert result[0]["link"] == "Missing Note"
+
+    def test_unresolved_uses_pty(self, cli):
+        assert "unresolved" in cli._PTY_COMMANDS
+
+    def test_orphans_total_only(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("12271\n")
+        result = cli.orphans(total_only=True)
+        assert "12271" in result
+        call_args = mock_subprocess.call_args[0][0]
+        assert "total" in call_args
+
+    def test_orphans_full_list(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('["a.md","b.md"]')
+        result = cli.orphans(total_only=False)
+        assert isinstance(result, list)
+        call_args = mock_subprocess.call_args[0][0]
+        assert "total" not in call_args
+
+    def test_deadends_total_only(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("12933\n")
+        result = cli.deadends(total_only=True)
+        assert "12933" in result
+        call_args = mock_subprocess.call_args[0][0]
+        assert "total" in call_args
+
+    def test_deadends_full_list(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('["c.md","d.md"]')
+        result = cli.deadends(total_only=False)
+        assert isinstance(result, list)
+        call_args = mock_subprocess.call_args[0][0]
+        assert "total" not in call_args

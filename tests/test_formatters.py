@@ -6,6 +6,8 @@ from obsidian_blade_mcp.formatters import (
     format_file_concise,
     format_file_list,
     format_folder_list,
+    format_link_list,
+    format_outline,
     format_properties,
     format_search_context,
     format_search_results,
@@ -189,3 +191,69 @@ class TestFormatTagList:
         text = "#IT/software\n#PKM/workflow\n"
         result = format_tag_list(text)
         assert "#IT/software" in result
+
+
+# ===========================================================================
+# Phase 3 — format_outline, format_link_list
+# ===========================================================================
+
+
+class TestFormatOutline:
+    """Test outline formatting."""
+
+    def test_json_headings(self, sample_outline):
+        result = format_outline(sample_outline)
+        assert "# My Note (line 1)" in result
+        assert "  ## Introduction (line 5)" in result
+        assert "    ### Sub-detail (line 15)" in result
+        assert "  ## Conclusion (line 25)" in result
+
+    def test_empty_list(self):
+        assert format_outline([]) == "No headings found."
+
+    def test_string_fallback(self):
+        text = "# Title\n  ## Section\n    ### Sub"
+        result = format_outline(text)
+        assert "# Title" in result
+        assert "## Section" in result
+
+    def test_empty_string(self):
+        assert format_outline("") == "No headings found."
+
+
+class TestFormatLinkList:
+    """Test link list formatting."""
+
+    def test_normal_list(self):
+        items = ["Target A", "Target B", "Target C"]
+        result = format_link_list(items)
+        assert "Target A" in result
+        assert "Target B" in result
+        assert "Target C" in result
+
+    def test_limit(self):
+        items = ["A", "B", "C", "D", "E"]
+        result = format_link_list(items, limit=2)
+        assert "A" in result
+        assert "B" in result
+        assert "3 more links" in result
+
+    def test_empty(self):
+        result = format_link_list([], label="backlinks")
+        assert "No backlinks found." == result
+
+    def test_dict_items(self):
+        items = [{"link": "Missing Note"}, {"link": "Another"}]
+        result = format_link_list(items, label="unresolved links")
+        assert "Missing Note" in result
+        assert "Another" in result
+
+    def test_string_input(self):
+        text = "Link A\nLink B\nLink C"
+        result = format_link_list(text)
+        assert "Link A" in result
+        assert "Link C" in result
+
+    def test_custom_label(self):
+        result = format_link_list([], label="aliases")
+        assert "No aliases found." == result

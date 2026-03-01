@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
 description: Obsidian vault operations via CLI — read, write, search, properties, structure
-version: 0.2.0
+version: 0.3.0
 permissions:
   read:
     - vault_info
@@ -19,6 +19,13 @@ permissions:
     - vault_bases
     - vault_base_views
     - vault_base_query
+    - vault_outline
+    - vault_links
+    - vault_backlinks
+    - vault_aliases
+    - vault_unresolved
+    - vault_orphans
+    - vault_deadends
   write:
     - vault_create
     - vault_append
@@ -38,6 +45,8 @@ permissions:
 5. **Prefer `file=` over `path=`** — name-based resolution is shorter to type
 6. **Use `vault_search` before `vault_search_context`** — paths-only is cheaper; escalate to context only when needed
 7. **Use `vault_bases` to discover .base files** — then `vault_base_query path=X` with the exact path
+8. **Use `vault_orphans`/`vault_deadends` with `total_only=true` first** — the full list is ~12K items; use `path=` to scope before requesting full list
+9. **Use `vault_outline` before `vault_read` for structure** — see headings without loading full content
 
 ## Quick Start — 5 Most Common Operations
 
@@ -81,6 +90,15 @@ vault_search query="Docker" limit=10   → Find notes by content
 - **vault_base_views** — List views in a base (requires base to be active file).
 - **vault_base_query** — Query a base for structured data. Use `path=` with `.base` extension.
 
+### Link & Structure
+- **vault_outline** — Heading tree with line numbers. Use before `vault_read` to preview structure.
+- **vault_links** — Outbound links from a note.
+- **vault_backlinks** — Inbound links (backlinks) to a note.
+- **vault_aliases** — Aliases for a note (alternative wikilink names).
+- **vault_unresolved** — Broken wikilinks across the vault. Use `limit=` and `path=` to scope.
+- **vault_orphans** — Notes with no inbound links. Defaults to count-only (`total_only=true`).
+- **vault_deadends** — Notes with no outbound links. Defaults to count-only (`total_only=true`).
+
 ### Properties (Atomic Frontmatter)
 - **vault_property_read** — Read one property value.
 - **vault_property_set** — Set/create a property. Atomic — safer than YAML editing.
@@ -117,6 +135,17 @@ vault_search query="Docker" limit=10   → Find notes by content
 2. vault_create name="My Effort" path="spaces/Systems/Areas/Knowledge Management/efforts/" content="..."
 3. vault_property_set name="kind" value="effort" path="spaces/.../My Effort.md"
 4. vault_property_set name="status" value="on" path="spaces/.../My Effort.md"
+```
+
+### Vault Health Audit
+```
+1. vault_orphans total_only=true              → Count orphan notes
+2. vault_deadends total_only=true             → Count dead-end notes
+3. vault_unresolved limit=10                  → Top broken links
+4. vault_orphans path="atlas/" total_only=false limit=10  → Orphans in atlas/
+5. vault_outline file="Important Note"        → Check structure before reading
+6. vault_links file="Hub Note"                → See what it links to
+7. vault_backlinks file="Hub Note"            → See what links to it
 ```
 
 ### Classify and File an Inbox Item
