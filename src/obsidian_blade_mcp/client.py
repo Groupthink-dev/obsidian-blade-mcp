@@ -192,20 +192,25 @@ class ObsidianCLI:
             ObsidianNotFoundError: If the CLI binary is missing.
         """
         args = self._build_args(command, params, vault, flags)
+        effective_timeout = timeout or self.timeout
         logger.debug("Running: %s", " ".join(args))
+
+        # search/search:context only produce output on a TTY (CLI bug)
+        if command in self._PTY_COMMANDS:
+            return self._run_pty(args, effective_timeout)
 
         try:
             result = subprocess.run(
                 args,
                 capture_output=True,
                 text=True,
-                timeout=timeout or self.timeout,
+                timeout=effective_timeout,
             )
         except FileNotFoundError as exc:
             raise ObsidianNotFoundError(f"Obsidian CLI not found at: {self.cli_path}", returncode=1) from exc
         except subprocess.TimeoutExpired as exc:
             raise ObsidianTimeoutError(
-                f"Command timed out after {timeout or self.timeout}s: {command}",
+                f"Command timed out after {effective_timeout}s: {command}",
                 returncode=1,
             ) from exc
 
@@ -213,6 +218,56 @@ class ObsidianCLI:
             raise _classify_error(result.stderr or result.stdout, result.returncode)
 
         return result.stdout
+
+    # Commands whose output only appears on a TTY (Obsidian CLI bug).
+    _PTY_COMMANDS = frozenset({"search", "search:context"})
+
+    def _run_pty(self, args: list[str], timeout: int) -> str:
+        """Run a command via ``script(1)`` to force TTY output.
+
+        The Obsidian CLI ``search`` and ``search:context`` commands only write
+        to a TTY — ``subprocess.run`` with pipes gets empty stdout.  The CLI
+        binary (Electron) forks internally, so even ``pty.openpty()`` on the
+        parent process doesn't help.  ``script -q /dev/null`` forces a real
+        controlling terminal around the child process tree.
+        """
+        script_args = ["script", "-q", "/dev/null"] + args
+        logger.debug("Running (PTY): %s", " ".join(script_args))
+
+        try:
+            result = subprocess.run(
+                script_args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError as exc:
+            raise ObsidianNotFoundError(
+                f"Obsidian CLI not found at: {self.cli_path}", returncode=1
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ObsidianTimeoutError(
+                f"Command timed out after {timeout}s",
+                returncode=1,
+            ) from exc
+
+        # script(1) wraps output with \r\n and may prepend TTY control chars
+        stdout = result.stdout.replace("\r\n", "\n").replace("\r", "\n")
+        # Strip TTY noise: the CLI echoes ^D (0x5e 0x44) + backspaces (0x08)
+        # that appear before the actual output
+        while stdout and ord(stdout[0]) in (0x08, 0x00, 0x04):
+            stdout = stdout[1:]
+        # Strip literal "^D" prefix (the caret + D echo)
+        if stdout.startswith("^D"):
+            stdout = stdout[2:]
+        # Strip any remaining leading backspaces
+        while stdout and ord(stdout[0]) == 0x08:
+            stdout = stdout[1:]
+
+        if result.returncode != 0:
+            raise _classify_error(stdout or result.stderr, result.returncode)
+
+        return stdout
 
     def run_json(
         self,
