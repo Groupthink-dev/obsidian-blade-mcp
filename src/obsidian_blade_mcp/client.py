@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 from typing import Any
@@ -104,6 +105,36 @@ class ObsidianCLI:
         self.vault_name = vault_name or os.environ.get("OBSIDIAN_VAULT_NAME")
         self.cli_path = cli_path or os.environ.get("OBSIDIAN_CLI_PATH") or self._find_cli()
         self.timeout = timeout
+        self._env = self._build_subprocess_env()
+
+    @staticmethod
+    def _build_subprocess_env() -> dict[str, str]:
+        """Build the environment dict for subprocess calls.
+
+        The Obsidian CLI is an Electron app that locates the running instance
+        via an IPC socket inside the user's per-session temp directory
+        (``$TMPDIR``).  When launched by hosts that strip environment variables
+        (e.g. Claude Desktop's ``disclaimer`` sandbox), ``TMPDIR`` may be
+        missing, causing the CLI to hang indefinitely.
+
+        On macOS we recover the correct value via ``getconf DARWIN_USER_TEMP_DIR``.
+        """
+        env = os.environ.copy()
+        if not env.get("TMPDIR") and platform.system() == "Darwin":
+            try:
+                result = subprocess.run(
+                    ["getconf", "DARWIN_USER_TEMP_DIR"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                tmpdir = result.stdout.strip()
+                if tmpdir:
+                    env["TMPDIR"] = tmpdir
+                    logger.info("Injected TMPDIR=%s for Electron IPC", tmpdir)
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                logger.warning("Could not determine TMPDIR via getconf")
+        return env
 
     @staticmethod
     def _find_cli() -> str:
@@ -206,6 +237,7 @@ class ObsidianCLI:
                 text=True,
                 timeout=effective_timeout,
                 stdin=subprocess.DEVNULL,
+                env=self._env,
             )
         except FileNotFoundError as exc:
             raise ObsidianNotFoundError(f"Obsidian CLI not found at: {self.cli_path}", returncode=1) from exc
@@ -242,6 +274,7 @@ class ObsidianCLI:
                 text=True,
                 timeout=timeout,
                 stdin=subprocess.DEVNULL,
+                env=self._env,
             )
         except FileNotFoundError as exc:
             raise ObsidianNotFoundError(f"Obsidian CLI not found at: {self.cli_path}", returncode=1) from exc
