@@ -205,6 +205,7 @@ class ObsidianCLI:
                 capture_output=True,
                 text=True,
                 timeout=effective_timeout,
+                stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError as exc:
             raise ObsidianNotFoundError(f"Obsidian CLI not found at: {self.cli_path}", returncode=1) from exc
@@ -240,11 +241,10 @@ class ObsidianCLI:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError as exc:
-            raise ObsidianNotFoundError(
-                f"Obsidian CLI not found at: {self.cli_path}", returncode=1
-            ) from exc
+            raise ObsidianNotFoundError(f"Obsidian CLI not found at: {self.cli_path}", returncode=1) from exc
         except subprocess.TimeoutExpired as exc:
             raise ObsidianTimeoutError(
                 f"Command timed out after {timeout}s",
@@ -648,9 +648,7 @@ class ObsidianCLI:
             params["path"] = path
         return self.run_json("unresolved", params, vault)
 
-    def orphans(
-        self, path: str | None = None, total_only: bool = True, vault: str | None = None
-    ) -> Any:
+    def orphans(self, path: str | None = None, total_only: bool = True, vault: str | None = None) -> Any:
         """Get orphan notes (no inbound links).
 
         Args:
@@ -665,9 +663,7 @@ class ObsidianCLI:
             return self.run("orphans", params, vault, flags=["total"])
         return self.run_json("orphans", params, vault)
 
-    def deadends(
-        self, path: str | None = None, total_only: bool = True, vault: str | None = None
-    ) -> Any:
+    def deadends(self, path: str | None = None, total_only: bool = True, vault: str | None = None) -> Any:
         """Get dead-end notes (no outbound links).
 
         Args:
