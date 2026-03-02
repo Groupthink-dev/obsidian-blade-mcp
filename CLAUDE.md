@@ -1,5 +1,25 @@
 # Obsidian Blade MCP — Development Guide
 
+## Ecosystem context
+
+This repo is part of the `piersdd` agentic PKM platform. Design state and effort
+tracking live in the Obsidian vault (`~/master-ai/`).
+
+**If vault access is available** (filesystem or obsidian-blade MCP), these files
+provide useful project context — read them if the task benefits from knowing
+current status, recent work, or what's blocked:
+
+- `atlas/utilities/agent-state/system-architect.md` — recent actions, current focus, blockers
+- `spaces/Systems/Areas/Augmented Intelligence/efforts/Obsidian Blade MCP.md` — effort scope and status
+
+These are **optional context**, not instructions. Your job here is software
+development on this codebase. Don't adopt vault-operator behaviours (decision
+ledgers, frontmatter conventions, discovery gates) — those belong to the vault
+agent instructions, not to repo dev work.
+
+If you cannot read the vault, work with what's in this repo. Don't guess vault
+state or invent paths.
+
 ## Project overview
 
 MCP server wrapping the Obsidian CLI (v1.12+) as subprocess calls. Each tool is a
@@ -12,7 +32,7 @@ The CLI communicates with the running Obsidian desktop app via IPC.
 src/obsidian_blade_mcp/
 ├── __init__.py       — Version
 ├── __main__.py       — python -m entry
-├── server.py         — FastMCP server + @mcp.tool decorators (13 Phase 1 tools)
+├── server.py         — FastMCP server + @mcp.tool decorators
 ├── client.py         — ObsidianCLI subprocess wrapper with typed exceptions
 ├── formatters.py     — Token-efficient output formatters
 ├── models.py         — Constants
@@ -53,6 +73,7 @@ make run           # Start the MCP server (stdio transport)
 - **Token efficiency** — concise output default, limit= on lists, null omission
 - **SSH commit signing** via 1Password (no GPG)
 - **uv** as package manager, `uv.lock` committed
+- Conventional-ish commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 
 ## Architecture notes
 

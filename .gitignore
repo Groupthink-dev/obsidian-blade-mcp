@@ -1,20 +1,45 @@
+# Python bytecode
 __pycache__/
 *.pyc
 *.pyo
+
+# Build / packaging
 *.egg-info/
 dist/
 build/
 .eggs/
 
+# Virtual environments
 .venv/
 venv/
+
+# Environment variables
 .env
 
+# Logs
 *.log
 
+# Linting / type-checking / test caches
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
 
+# Coverage
 htmlcov/
 .coverage
+.coverage.*
+
+# Claude Code — local overrides and transient state
+# (.claude/settings.json IS committed — it's repo-level policy)
+.claude/settings.local.json
+.claude/todos.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
