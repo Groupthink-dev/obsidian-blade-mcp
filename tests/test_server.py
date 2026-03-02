@@ -72,15 +72,16 @@ class TestVaultRead:
         assert "Content" in result
 
     @patch("obsidian_blade_mcp.server._get_client")
-    async def test_read_truncates_long_content(self, mock_get_client):
+    async def test_read_returns_full_content(self, mock_get_client):
         from obsidian_blade_mcp.server import vault_read
 
         mock_client = MagicMock()
-        mock_client.read.return_value = "\n".join(f"Line {i}" for i in range(200))
+        long_content = "\n".join(f"Line {i}" for i in range(200))
+        mock_client.read.return_value = long_content
         mock_get_client.return_value = mock_client
 
         result = await vault_read(file="Long")
-        assert "more lines" in result
+        assert result == long_content
 
 
 class TestVaultCreate:

@@ -25,7 +25,6 @@ from obsidian_blade_mcp.formatters import (
     format_search_results,
     format_tag_list,
     format_vault_info,
-    truncate_content,
 )
 from obsidian_blade_mcp.models import DEFAULT_LIMIT
 
@@ -130,8 +129,8 @@ async def vault_read(
     Without either, reads the currently active note in Obsidian.
     """
     try:
-        content = await _run(_get_client().read, file=file, path=path, vault=vault)
-        return truncate_content(content)
+        content: str = await _run(_get_client().read, file=file, path=path, vault=vault)
+        return content
     except ObsidianCLIError as e:
         return _error_response(e)
     except Exception as e:
