@@ -421,3 +421,95 @@ class TestPhase3Methods:
         assert isinstance(result, list)
         call_args = mock_subprocess.call_args[0][0]
         assert "total" not in call_args
+
+
+class TestPhase4Methods:
+    """Test Phase 4 convenience methods (tasks, bookmarks, file ops)."""
+
+    def test_tasks(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('[{"text":"Buy milk","status":"unchecked"}]')
+        result = cli.tasks()
+        assert isinstance(result, list)
+        assert result[0]["text"] == "Buy milk"
+
+    def test_tasks_with_file(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.tasks(file="Todo")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "file=Todo" in call_args
+
+    def test_tasks_with_status(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("[]")
+        cli.tasks(status="unchecked")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "status=unchecked" in call_args
+
+    def test_task_update_toggle(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.task_update(ref="notes/Todo.md:5")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "task" in call_args
+        assert "ref=notes/Todo.md:5" in call_args
+        assert "toggle" in call_args
+
+    def test_task_update_complete(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.task_update(ref="notes/Todo.md:5", action="complete")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "complete" in call_args
+
+    def test_bookmarks(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result('[{"type":"file","title":"Note","path":"a.md"}]')
+        result = cli.bookmarks()
+        assert isinstance(result, list)
+        assert result[0]["title"] == "Note"
+
+    def test_bookmark_add(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.bookmark_add(path="notes/Important.md", title="My Bookmark")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "bookmark" in call_args
+        assert "path=notes/Important.md" in call_args
+        assert "title=My Bookmark" in call_args
+
+    def test_delete_file_to_trash(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.delete_file(path="notes/Old.md")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "delete" in call_args
+        assert "path=notes/Old.md" in call_args
+        assert "permanent" not in call_args
+
+    def test_delete_file_permanent(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.delete_file(path="notes/Old.md", permanent=True)
+        call_args = mock_subprocess.call_args[0][0]
+        assert "permanent" in call_args
+
+    def test_rename(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.rename(path="notes/Old Name.md", to="New Name")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "rename" in call_args
+        assert "path=notes/Old Name.md" in call_args
+        assert "to=New Name" in call_args
+
+    def test_rename_args(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.rename(path="a.md", to="b")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "rename" in call_args
+
+    def test_move(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.move(path="notes/Note.md", to="archive/")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "move" in call_args
+        assert "path=notes/Note.md" in call_args
+        assert "to=archive/" in call_args
+
+    def test_move_args(self, cli, mock_subprocess, successful_result):
+        mock_subprocess.return_value = successful_result("")
+        cli.move(path="a.md", to="folder/")
+        call_args = mock_subprocess.call_args[0][0]
+        assert "move" in call_args

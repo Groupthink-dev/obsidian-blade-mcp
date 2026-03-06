@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from obsidian_blade_mcp.formatters import (
+    format_bookmark_list,
     format_file_concise,
     format_file_list,
     format_folder_list,
@@ -12,6 +13,7 @@ from obsidian_blade_mcp.formatters import (
     format_search_context,
     format_search_results,
     format_tag_list,
+    format_task_list,
     format_vault_info,
     truncate_content,
 )
@@ -257,3 +259,76 @@ class TestFormatLinkList:
     def test_custom_label(self):
         result = format_link_list([], label="aliases")
         assert "No aliases found." == result
+
+
+# ===========================================================================
+# Phase 4 — format_task_list, format_bookmark_list
+# ===========================================================================
+
+
+class TestFormatTaskList:
+    """Test task list formatting."""
+
+    def test_normal(self, sample_tasks):
+        result = format_task_list(sample_tasks)
+        assert "- [ ] Buy groceries (notes/Todo.md:5)" in result
+        assert "- [x] Review PR (notes/Todo.md:8)" in result
+        assert "- [ ] Deploy v0.4 (notes/Sprint.md:3)" in result
+        assert "- [x] Write tests (notes/Sprint.md:7)" in result
+
+    def test_empty(self):
+        assert format_task_list([]) == "No tasks found."
+
+    def test_limit(self, sample_tasks):
+        result = format_task_list(sample_tasks, limit=2)
+        assert "Buy groceries" in result
+        assert "Review PR" in result
+        assert "2 more tasks" in result
+
+    def test_string_fallback(self):
+        text = "- [ ] Task one\n- [x] Task two\n"
+        result = format_task_list(text)
+        assert "Task one" in result
+        assert "Task two" in result
+
+    def test_string_empty(self):
+        assert format_task_list("") == "No tasks found."
+
+    def test_task_without_line(self):
+        tasks = [{"text": "No line info", "status": "unchecked", "path": "notes/Todo.md"}]
+        result = format_task_list(tasks)
+        assert "- [ ] No line info (notes/Todo.md)" in result
+
+
+class TestFormatBookmarkList:
+    """Test bookmark list formatting."""
+
+    def test_normal(self, sample_bookmarks):
+        result = format_bookmark_list(sample_bookmarks)
+        assert "file: Important Note" in result
+        assert "folder: Projects" in result
+        assert "search: Docker refs" in result
+        assert "url: Anthropic" in result
+
+    def test_empty(self):
+        assert format_bookmark_list([]) == "No bookmarks found."
+
+    def test_limit(self, sample_bookmarks):
+        result = format_bookmark_list(sample_bookmarks, limit=2)
+        assert "Important Note" in result
+        assert "Projects" in result
+        assert "2 more bookmarks" in result
+
+    def test_string_fallback(self):
+        text = "file: Note A\nfolder: Projects\n"
+        result = format_bookmark_list(text)
+        assert "Note A" in result
+        assert "Projects" in result
+
+    def test_string_empty(self):
+        assert format_bookmark_list("") == "No bookmarks found."
+
+    def test_untitled_bookmark(self):
+        bookmarks = [{"type": "file"}]
+        result = format_bookmark_list(bookmarks)
+        assert "file: (untitled)" in result

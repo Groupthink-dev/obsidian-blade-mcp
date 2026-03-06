@@ -284,6 +284,94 @@ def format_link_list(
     return "\n".join(lines)
 
 
+def format_task_list(
+    tasks: list[dict[str, Any]] | str,
+    limit: int = DEFAULT_LIMIT,
+) -> str:
+    """Format a task listing.
+
+    Input: JSON array of task objects or string fallback.
+    Output: ``- [x] task text (path:line)`` per line, capped at limit.
+    """
+    if isinstance(tasks, str):
+        raw_lines = [line.strip() for line in tasks.strip().split("\n") if line.strip()]
+        if not raw_lines:
+            return "No tasks found."
+        total = len(raw_lines)
+        shown = raw_lines[:limit]
+        if total > len(shown):
+            shown.append(f"… {total - len(shown)} more tasks")
+        return "\n".join(shown)
+
+    if not tasks:
+        return "No tasks found."
+
+    total = len(tasks)
+    visible = tasks[:limit]
+    lines: list[str] = []
+    for t in visible:
+        status = t.get("status", "unchecked")
+        checkbox = "[x]" if status in ("checked", "complete", "done") else "[ ]"
+        text = t.get("text", t.get("content", "?"))
+        location = ""
+        task_path = t.get("path", "")
+        task_line = t.get("line")
+        if task_path and task_line is not None:
+            location = f" ({task_path}:{task_line})"
+        elif task_path:
+            location = f" ({task_path})"
+        lines.append(f"- {checkbox} {text}{location}")
+
+    if total > len(visible):
+        lines.append(f"… {total - len(visible)} more tasks")
+
+    return "\n".join(lines)
+
+
+def format_bookmark_list(
+    bookmarks: list[dict[str, Any]] | str,
+    limit: int = DEFAULT_LIMIT,
+) -> str:
+    """Format a bookmark listing.
+
+    Input: JSON array of bookmark objects or string fallback.
+    Output: ``type: title — path/query/url`` per line, capped at limit.
+    """
+    if isinstance(bookmarks, str):
+        raw_lines = [line.strip() for line in bookmarks.strip().split("\n") if line.strip()]
+        if not raw_lines:
+            return "No bookmarks found."
+        total = len(raw_lines)
+        shown = raw_lines[:limit]
+        if total > len(shown):
+            shown.append(f"… {total - len(shown)} more bookmarks")
+        return "\n".join(shown)
+
+    if not bookmarks:
+        return "No bookmarks found."
+
+    total = len(bookmarks)
+    visible = bookmarks[:limit]
+    lines: list[str] = []
+    for b in visible:
+        bm_type = b.get("type", "file")
+        title = b.get("title", b.get("name", ""))
+        target = b.get("path") or b.get("query") or b.get("url") or ""
+        if title and target:
+            lines.append(f"{bm_type}: {title} — {target}")
+        elif title:
+            lines.append(f"{bm_type}: {title}")
+        elif target:
+            lines.append(f"{bm_type}: {target}")
+        else:
+            lines.append(f"{bm_type}: (untitled)")
+
+    if total > len(visible):
+        lines.append(f"… {total - len(visible)} more bookmarks")
+
+    return "\n".join(lines)
+
+
 def truncate_content(content: str, max_lines: int = 100) -> str:
     """Truncate long content with annotation."""
     lines = content.split("\n")

@@ -170,3 +170,25 @@ def sample_unresolved() -> list[dict[str, str]]:
         {"link": "Broken Reference"},
         {"link": "Dead Link"},
     ]
+
+
+@pytest.fixture
+def sample_tasks() -> list[dict[str, Any]]:
+    """Sample tasks JSON response."""
+    return [
+        {"text": "Buy groceries", "status": "unchecked", "path": "notes/Todo.md", "line": 5},
+        {"text": "Review PR", "status": "checked", "path": "notes/Todo.md", "line": 8},
+        {"text": "Deploy v0.4", "status": "unchecked", "path": "notes/Sprint.md", "line": 3},
+        {"text": "Write tests", "status": "checked", "path": "notes/Sprint.md", "line": 7},
+    ]
+
+
+@pytest.fixture
+def sample_bookmarks() -> list[dict[str, Any]]:
+    """Sample bookmarks JSON response."""
+    return [
+        {"type": "file", "title": "Important Note", "path": "notes/Important.md"},
+        {"type": "folder", "title": "Projects", "path": "spaces/Projects/"},
+        {"type": "search", "title": "Docker refs", "query": "Docker"},
+        {"type": "url", "title": "Anthropic", "url": "https://anthropic.com"},
+    ]

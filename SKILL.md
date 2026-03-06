@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
-description: Obsidian vault operations via CLI — read, write, search, properties, structure
-version: 0.3.0
+description: Obsidian vault operations via CLI — read, write, search, properties, structure, tasks, bookmarks, file ops
+version: 0.4.0
 permissions:
   read:
     - vault_info
@@ -26,12 +26,19 @@ permissions:
     - vault_unresolved
     - vault_orphans
     - vault_deadends
+    - vault_tasks
+    - vault_bookmarks
   write:
     - vault_create
     - vault_append
     - vault_prepend
     - vault_property_set
     - vault_property_remove
+    - vault_task_update
+    - vault_bookmark_add
+    - vault_delete
+    - vault_rename
+    - vault_move
 ---
 
 # Obsidian Blade MCP — Skill Guide
@@ -99,6 +106,19 @@ vault_search query="Docker" limit=10   → Find notes by content
 - **vault_orphans** — Notes with no inbound links. Defaults to count-only (`total_only=true`).
 - **vault_deadends** — Notes with no outbound links. Defaults to count-only (`total_only=true`).
 
+### Tasks
+- **vault_tasks** — List tasks (checkboxes). Use `file=` to scope, `status=` to filter.
+- **vault_task_update** — Toggle/complete/uncomplete a task by `ref=path:line`.
+
+### Bookmarks
+- **vault_bookmarks** — List all bookmarks (files, folders, searches, URLs).
+- **vault_bookmark_add** — Add a bookmark. Use `path=`, `search=`, or `url=`.
+
+### File Operations
+- **vault_delete** — Delete a file. Moves to trash by default. Use `permanent=true` to permanently delete (IRREVERSIBLE).
+- **vault_rename** — Rename a file. Obsidian updates all wikilinks automatically.
+- **vault_move** — Move a file to a new folder. Obsidian updates all wikilinks automatically.
+
 ### Properties (Atomic Frontmatter)
 - **vault_property_read** — Read one property value.
 - **vault_property_set** — Set/create a property. Atomic — safer than YAML editing.
@@ -153,7 +173,14 @@ vault_search query="Docker" limit=10   → Find notes by content
 1. vault_read path="+/ingest/raw-capture.md"       → Read content
 2. vault_properties path="+/ingest/raw-capture.md"  → Check existing metadata
 3. vault_property_set name="ai_confidence" value="0.87" path="+/ingest/raw-capture.md"
-4. vault_property_set name="ai_suggested_destination" value="spaces/Systems/..." path="+/ingest/raw-capture.md"
+4. vault_move path="+/ingest/raw-capture.md" destination="spaces/Systems/Areas/..."  → Move to correct area
+```
+
+### Task Management
+```
+1. vault_tasks status="unchecked" limit=10   → List open tasks
+2. vault_tasks file="Sprint Plan"            → Tasks in a specific note
+3. vault_task_update ref="notes/Todo.md:5" action="complete"  → Check off a task
 ```
 
 ## Common Parameters
@@ -168,6 +195,8 @@ vault_search query="Docker" limit=10   → Find notes by content
 | `query` | Search query string | `query="Docker"` |
 | `name` | New note name / tag name | `name="New Note"` |
 | `content` | Markdown content | `content="# Hello\nBody"` |
+| `ref` | Task reference (path:line) | `ref="notes/Todo.md:5"` |
+| `destination` | Target folder for move | `destination="spaces/Systems/"` |
 
 ## Prerequisites
 

@@ -585,3 +585,237 @@ class TestVaultDeadends:
 
         result = await vault_deadends(total_only=False)
         assert "x.md" in result
+
+
+# ===========================================================================
+# Phase 4 — Task, Bookmark, File Operation Tools
+# ===========================================================================
+
+
+class TestVaultTasks:
+    """Test vault_tasks tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tasks_success(self, mock_get_client, sample_tasks):
+        from obsidian_blade_mcp.server import vault_tasks
+
+        mock_client = MagicMock()
+        mock_client.tasks.return_value = sample_tasks
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tasks()
+        assert "Buy groceries" in result
+        assert "[ ]" in result
+        assert "[x]" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tasks_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_tasks
+
+        mock_client = MagicMock()
+        mock_client.tasks.return_value = []
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tasks()
+        assert "No tasks" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tasks_with_limit(self, mock_get_client, sample_tasks):
+        from obsidian_blade_mcp.server import vault_tasks
+
+        mock_client = MagicMock()
+        mock_client.tasks.return_value = sample_tasks
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tasks(limit=2)
+        assert "2 more tasks" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_tasks_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianNotRunningError
+        from obsidian_blade_mcp.server import vault_tasks
+
+        mock_client = MagicMock()
+        mock_client.tasks.side_effect = ObsidianNotRunningError("not running")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_tasks()
+        assert "Error" in result
+
+
+class TestVaultTaskUpdate:
+    """Test vault_task_update tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_task_update_toggle(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_task_update
+
+        mock_client = MagicMock()
+        mock_client.task_update.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_task_update(ref="notes/Todo.md:5")
+        assert "Task updated" in result
+        assert "toggle" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_task_update_complete(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_task_update
+
+        mock_client = MagicMock()
+        mock_client.task_update.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_task_update(ref="notes/Todo.md:5", action="complete")
+        assert "complete" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_task_update_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianFileNotFoundError
+        from obsidian_blade_mcp.server import vault_task_update
+
+        mock_client = MagicMock()
+        mock_client.task_update.side_effect = ObsidianFileNotFoundError("not found")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_task_update(ref="missing:1")
+        assert "Error" in result
+
+
+class TestVaultBookmarks:
+    """Test vault_bookmarks tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_bookmarks_success(self, mock_get_client, sample_bookmarks):
+        from obsidian_blade_mcp.server import vault_bookmarks
+
+        mock_client = MagicMock()
+        mock_client.bookmarks.return_value = sample_bookmarks
+        mock_get_client.return_value = mock_client
+
+        result = await vault_bookmarks()
+        assert "Important Note" in result
+        assert "Projects" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_bookmarks_empty(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_bookmarks
+
+        mock_client = MagicMock()
+        mock_client.bookmarks.return_value = []
+        mock_get_client.return_value = mock_client
+
+        result = await vault_bookmarks()
+        assert "No bookmarks" in result
+
+
+class TestVaultBookmarkAdd:
+    """Test vault_bookmark_add tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_bookmark_add_success(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_bookmark_add
+
+        mock_client = MagicMock()
+        mock_client.bookmark_add.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_bookmark_add(path="notes/Important.md", title="My Bookmark")
+        assert "Bookmarked" in result
+
+
+class TestVaultDelete:
+    """Test vault_delete tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_delete_to_trash(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_delete
+
+        mock_client = MagicMock()
+        mock_client.delete_file.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_delete(path="notes/Old.md")
+        assert "Deleted" in result
+        assert "trash" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_delete_permanent(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_delete
+
+        mock_client = MagicMock()
+        mock_client.delete_file.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_delete(path="notes/Old.md", permanent=True)
+        assert "Permanently deleted" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_delete_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianFileNotFoundError
+        from obsidian_blade_mcp.server import vault_delete
+
+        mock_client = MagicMock()
+        mock_client.delete_file.side_effect = ObsidianFileNotFoundError("not found")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_delete(path="missing.md")
+        assert "Error" in result
+
+
+class TestVaultRename:
+    """Test vault_rename tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_rename_success(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_rename
+
+        mock_client = MagicMock()
+        mock_client.rename.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_rename(path="notes/Old.md", new_name="New Name")
+        assert "Renamed" in result
+        assert "Old.md" in result
+        assert "New Name" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_rename_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianFileNotFoundError
+        from obsidian_blade_mcp.server import vault_rename
+
+        mock_client = MagicMock()
+        mock_client.rename.side_effect = ObsidianFileNotFoundError("not found")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_rename(path="missing.md", new_name="New")
+        assert "Error" in result
+
+
+class TestVaultMove:
+    """Test vault_move tool."""
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_move_success(self, mock_get_client):
+        from obsidian_blade_mcp.server import vault_move
+
+        mock_client = MagicMock()
+        mock_client.move.return_value = ""
+        mock_get_client.return_value = mock_client
+
+        result = await vault_move(path="notes/Note.md", destination="archive/")
+        assert "Moved" in result
+        assert "Note.md" in result
+        assert "archive/" in result
+
+    @patch("obsidian_blade_mcp.server._get_client")
+    async def test_move_error(self, mock_get_client):
+        from obsidian_blade_mcp.client import ObsidianFileNotFoundError
+        from obsidian_blade_mcp.server import vault_move
+
+        mock_client = MagicMock()
+        mock_client.move.side_effect = ObsidianFileNotFoundError("not found")
+        mock_get_client.return_value = mock_client
+
+        result = await vault_move(path="missing.md", destination="archive/")
+        assert "Error" in result

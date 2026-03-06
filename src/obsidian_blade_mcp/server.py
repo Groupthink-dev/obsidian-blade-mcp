@@ -16,6 +16,7 @@ from pydantic import Field
 
 from obsidian_blade_mcp.client import ObsidianCLI, ObsidianCLIError
 from obsidian_blade_mcp.formatters import (
+    format_bookmark_list,
     format_file_list,
     format_folder_list,
     format_link_list,
@@ -24,6 +25,7 @@ from obsidian_blade_mcp.formatters import (
     format_search_context,
     format_search_results,
     format_tag_list,
+    format_task_list,
     format_vault_info,
 )
 from obsidian_blade_mcp.models import DEFAULT_LIMIT
@@ -765,6 +767,178 @@ async def vault_deadends(
         return _error_response(e)
     except Exception as e:
         logger.exception("Unexpected error in vault_deadends")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# TASK TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_tasks(
+    file: Annotated[str | None, Field(description="Note name to scope tasks to")] = None,
+    path: Annotated[str | None, Field(description="Exact path to scope tasks to")] = None,
+    status: Annotated[str | None, Field(description="Filter by status: 'checked', 'unchecked'")] = None,
+    limit: Annotated[int, Field(description="Max tasks to return (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List tasks (checkboxes) in the vault.
+
+    Returns ``- [x] task text (path:line)`` per line. Use ``file=`` or ``path=``
+    to scope to a specific note. Use ``status=`` to filter (e.g., ``unchecked``).
+    """
+    try:
+        result = await _run(_get_client().tasks, file=file, path=path, status=status, vault=vault)
+        return format_task_list(result, limit=limit)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_tasks")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_task_update(
+    ref: Annotated[str, Field(description="Task reference in path:line format (e.g., 'notes/Todo.md:5')")],
+    action: Annotated[
+        str, Field(description="Action: 'toggle', 'complete', or 'uncomplete' (default: toggle)")
+    ] = "toggle",
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Toggle, complete, or uncomplete a task by reference.
+
+    The ``ref`` is ``path:line`` from ``vault_tasks`` output. Use ``action=complete``
+    to check, ``action=uncomplete`` to uncheck, or ``action=toggle`` to flip.
+    """
+    try:
+        result = await _run(_get_client().task_update, ref=ref, action=action, vault=vault)
+        result_str = str(result).strip()
+        return result_str if result_str else f"Task updated: {ref} ({action})"
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_task_update")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# BOOKMARK TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_bookmarks(
+    limit: Annotated[int, Field(description="Max bookmarks to return (default: 20)")] = DEFAULT_LIMIT,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """List all bookmarks in the vault (files, folders, searches, URLs).
+
+    Returns ``type: title — target`` per line.
+    """
+    try:
+        result = await _run(_get_client().bookmarks, vault=vault)
+        return format_bookmark_list(result, limit=limit)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_bookmarks")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_bookmark_add(
+    path: Annotated[str | None, Field(description="File or folder path to bookmark")] = None,
+    search: Annotated[str | None, Field(description="Search query to bookmark")] = None,
+    url: Annotated[str | None, Field(description="URL to bookmark")] = None,
+    title: Annotated[str | None, Field(description="Display title for the bookmark")] = None,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Add a bookmark. Specify one of ``path=``, ``search=``, or ``url=``.
+
+    Use ``title=`` to set a display name for the bookmark.
+    """
+    try:
+        result = await _run(_get_client().bookmark_add, path=path, search=search, url=url, title=title, vault=vault)
+        target = path or search or url or "bookmark"
+        result_str = str(result).strip()
+        return result_str if result_str else f"Bookmarked: {target}"
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_bookmark_add")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# FILE OPERATION TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_delete(
+    path: Annotated[str, Field(description="Path to the file to delete (from vault root)")],
+    permanent: Annotated[
+        bool, Field(description="Permanently delete instead of moving to trash (IRREVERSIBLE, default: false)")
+    ] = False,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Delete a file from the vault.
+
+    By default, moves to the system trash (recoverable). Set ``permanent=true``
+    to permanently delete — THIS IS IRREVERSIBLE.
+    """
+    try:
+        result = await _run(_get_client().delete_file, path=path, permanent=permanent, vault=vault)
+        action = "Permanently deleted" if permanent else "Deleted (moved to trash)"
+        result_str = str(result).strip()
+        return result_str if result_str else f"{action}: {path}"
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_delete")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_rename(
+    path: Annotated[str, Field(description="Current file path (from vault root)")],
+    new_name: Annotated[str, Field(description="New filename (without folder path)")],
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Rename a file. Obsidian updates all wikilinks automatically.
+
+    Specify the current ``path`` and the ``new_name`` (just the filename, not the full path).
+    """
+    try:
+        result = await _run(_get_client().rename, path=path, to=new_name, vault=vault)
+        result_str = str(result).strip()
+        return result_str if result_str else f"Renamed: {path} → {new_name}"
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_rename")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_move(
+    path: Annotated[str, Field(description="Current file path (from vault root)")],
+    destination: Annotated[str, Field(description="Destination folder path (e.g., 'spaces/Systems/')")],
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Move a file to a new folder. Obsidian updates all wikilinks automatically.
+
+    Specify the current ``path`` and the ``destination`` folder.
+    """
+    try:
+        result = await _run(_get_client().move, path=path, to=destination, vault=vault)
+        result_str = str(result).strip()
+        return result_str if result_str else f"Moved: {path} → {destination}"
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_move")
         return f"Error: {e}"
 
 

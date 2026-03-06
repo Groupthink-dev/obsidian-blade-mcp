@@ -710,3 +710,105 @@ class ObsidianCLI:
         if total_only:
             return self.run("deadends", params, vault, flags=["total"])
         return self.run_json("deadends", params, vault)
+
+    # -------------------------------------------------------------------
+    # Convenience methods for Phase 4 tools (tasks, bookmarks, file ops)
+    # -------------------------------------------------------------------
+
+    def tasks(
+        self,
+        file: str | None = None,
+        path: str | None = None,
+        status: str | None = None,
+        vault: str | None = None,
+    ) -> Any:
+        """List tasks (checkboxes) in the vault.
+
+        Args:
+            file: Note name to scope tasks to.
+            path: Exact path to scope tasks to.
+            status: Filter by status (e.g., ``checked``, ``unchecked``).
+        """
+        params: dict[str, Any] = {}
+        if file:
+            params["file"] = file
+        if path:
+            params["path"] = path
+        if status:
+            params["status"] = status
+        return self.run_json("tasks", params, vault)
+
+    def task_update(self, ref: str, action: str = "toggle", vault: str | None = None) -> str:
+        """Toggle, complete, or uncomplete a task by reference.
+
+        Args:
+            ref: Task reference in ``path:line`` format.
+            action: One of ``toggle``, ``complete``, ``uncomplete``.
+        """
+        params: dict[str, Any] = {"ref": ref}
+        flags = [action]
+        return self.run("task", params, vault, flags)
+
+    def bookmarks(self, vault: str | None = None) -> Any:
+        """List all bookmarks (files, folders, searches, URLs)."""
+        return self.run_json("bookmarks", vault=vault)
+
+    def bookmark_add(
+        self,
+        path: str | None = None,
+        search: str | None = None,
+        url: str | None = None,
+        title: str | None = None,
+        vault: str | None = None,
+    ) -> str:
+        """Add a bookmark.
+
+        Args:
+            path: File or folder path to bookmark.
+            search: Search query to bookmark.
+            url: URL to bookmark.
+            title: Display title for the bookmark.
+        """
+        params: dict[str, Any] = {}
+        if path:
+            params["path"] = path
+        if search:
+            params["search"] = search
+        if url:
+            params["url"] = url
+        if title:
+            params["title"] = title
+        return self.run("bookmark", params, vault)
+
+    def delete_file(self, path: str, permanent: bool = False, vault: str | None = None) -> str:
+        """Delete a file from the vault.
+
+        Method named ``delete_file`` to avoid shadowing builtins.
+
+        Args:
+            path: Path to the file to delete.
+            permanent: If True, permanently delete. Otherwise move to trash.
+        """
+        params: dict[str, Any] = {"path": path}
+        flags = ["permanent"] if permanent else []
+        return self.run("delete", params, vault, flags)
+
+    def rename(self, path: str, to: str, vault: str | None = None) -> str:
+        """Rename a file. Obsidian updates all wikilinks automatically.
+
+        Args:
+            path: Current file path.
+            to: New name (not full path — just the new filename).
+        """
+        params: dict[str, Any] = {"path": path, "to": to}
+        return self.run("rename", params, vault)
+
+    def move(self, path: str, to: str, vault: str | None = None) -> str:
+        """Move a file to a new folder. Obsidian updates all wikilinks automatically.
+
+        Args:
+            path: Current file path.
+            to: Destination folder path.
+        """
+        params: dict[str, Any] = {"path": path, "to": to}
+        return self.run("move", params, vault)
