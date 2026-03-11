@@ -608,6 +608,69 @@ async def vault_base_query(
 
 
 # ===========================================================================
+# QUERY TOOLS — bulk frontmatter operations
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_query_properties(
+    property: Annotated[str, Field(description="Frontmatter property to match (e.g. 'status', 'kind')")],
+    value: Annotated[str, Field(description="Substring to match (case-insensitive, e.g. 'on')")],
+    path: Annotated[str | None, Field(description="Restrict to folder path (e.g. 'spaces/')")] = None,
+    fields: Annotated[
+        str | None, Field(description="Comma-separated fields to return (e.g. 'kind,status,rank')")
+    ] = None,
+    limit: Annotated[int, Field(description="Max results (default: 50)")] = 50,
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Query notes by frontmatter property, returning metadata without reading bodies.
+
+    Returns one line per matching note: ``path | field1=val1 | field2=val2``.
+    Sorted by ``rank`` descending when present. Use this instead of reading
+    individual notes when you only need frontmatter summaries.
+
+    Example: ``vault_query_properties(property="status", value="on", path="spaces/", fields="kind,status,rank")``
+    returns all active efforts with their rank in a single call.
+    """
+    try:
+        results = await _run(
+            _get_client().query_properties,
+            property=property,
+            value=value,
+            path=path,
+            fields=fields,
+            limit=limit,
+            vault=vault,
+        )
+        if not results:
+            return "No matching notes found."
+
+        lines = []
+        for entry in results:
+            file_path = entry["file"]
+            props = entry["properties"]
+            prop_parts = [f"{k}={_format_prop_value(v)}" for k, v in props.items()]
+            lines.append(f"{file_path} | {' | '.join(prop_parts)}")
+
+        total_line = f"\n({len(results)} results)" if len(results) == limit else ""
+        return "\n".join(lines) + total_line
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_query_properties")
+        return f"Error: {e}"
+
+
+def _format_prop_value(value: Any) -> str:
+    """Format a property value for compact display."""
+    if isinstance(value, list):
+        return f"[{', '.join(str(v) for v in value)}]"
+    if isinstance(value, bool):
+        return str(value).lower()
+    return str(value)
+
+
+# ===========================================================================
 # LINK & STRUCTURE TOOLS
 # ===========================================================================
 

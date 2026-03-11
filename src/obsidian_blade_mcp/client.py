@@ -812,3 +812,151 @@ class ObsidianCLI:
         """
         params: dict[str, Any] = {"path": path, "to": to}
         return self.run("move", params, vault)
+
+    # -------------------------------------------------------------------
+    # Direct filesystem operations (no CLI dependency)
+    # -------------------------------------------------------------------
+
+    def _resolve_vault_path(self, vault: str | None = None) -> str:
+        """Resolve the vault's filesystem path.
+
+        Resolution order:
+        1. OBSIDIAN_VAULT_PATH env var (explicit, preferred for headless)
+        2. Call CLI ``vault`` command to discover path (requires Obsidian running)
+
+        Raises:
+            ObsidianVaultError: If the vault path cannot be resolved.
+        """
+        env_path = os.environ.get("OBSIDIAN_VAULT_PATH")
+        if env_path and os.path.isdir(env_path):
+            return env_path
+
+        # Fall back to CLI vault info
+        try:
+            info = self.vault_info(vault=vault)
+            if isinstance(info, dict):
+                vault_path: str | None = info.get("path")
+                if vault_path and os.path.isdir(vault_path):
+                    return str(vault_path)
+        except ObsidianCLIError:
+            pass
+
+        raise ObsidianVaultError(
+            "Cannot resolve vault path. Set OBSIDIAN_VAULT_PATH env var or ensure Obsidian is running.",
+            returncode=1,
+        )
+
+    @staticmethod
+    def _parse_frontmatter(file_path: str) -> dict[str, Any] | None:
+        """Parse YAML frontmatter from a markdown file without reading the body.
+
+        Returns the frontmatter dict, or None if no valid frontmatter found.
+        Uses a custom YAML loader that preserves string values like ``on``,
+        ``off``, ``yes``, ``no`` (which standard YAML parses as booleans).
+        """
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                first_line = f.readline().rstrip("\n")
+                if first_line != "---":
+                    return None
+                yaml_lines: list[str] = []
+                for line in f:
+                    stripped = line.rstrip("\n")
+                    if stripped == "---":
+                        break
+                    yaml_lines.append(line)
+                else:
+                    # EOF without closing ---
+                    return None
+            import yaml  # type: ignore[import-untyped]
+
+            # Custom loader that treats YAML 1.1 booleans (on/off/yes/no) as strings.
+            # Obsidian frontmatter uses "status: on" as a string, not boolean.
+            class _StringBoolLoader(yaml.SafeLoader):
+                pass
+
+            _StringBoolLoader.add_constructor(
+                "tag:yaml.org,2002:bool",
+                lambda loader, node: loader.construct_scalar(node),
+            )
+
+            result: dict[str, Any] | None = yaml.load("".join(yaml_lines), Loader=_StringBoolLoader)
+            return result
+        except Exception:
+            return None
+
+    def query_properties(
+        self,
+        property: str,
+        value: str,
+        path: str | None = None,
+        fields: str | None = None,
+        limit: int = 50,
+        vault: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Query notes by frontmatter property value, returning only metadata.
+
+        Walks the vault filesystem, parsing only YAML frontmatter (never reads
+        note bodies). Filters where the specified property contains the value
+        (case-insensitive substring match).
+
+        Args:
+            property: Frontmatter property name to match (e.g. "status").
+            value: Substring to match against the property value (case-insensitive).
+            path: Restrict to a folder path relative to vault root (e.g. "spaces/").
+            fields: Comma-separated list of frontmatter fields to return.
+                If None, returns all frontmatter fields.
+            limit: Maximum results to return (default 50).
+            vault: Vault name override.
+
+        Returns:
+            List of dicts with ``file`` (relative path) and ``properties`` (dict).
+        """
+        vault_path = self._resolve_vault_path(vault)
+        search_root = os.path.join(vault_path, path) if path else vault_path
+
+        if not os.path.isdir(search_root):
+            return []
+
+        field_list: list[str] | None = None
+        if fields:
+            field_list = [f.strip() for f in fields.split(",")]
+
+        value_lower = value.lower()
+        results: list[dict[str, Any]] = []
+
+        for dirpath, _dirnames, filenames in os.walk(search_root):
+            for filename in filenames:
+                if not filename.endswith(".md"):
+                    continue
+                full_path = os.path.join(dirpath, filename)
+                fm = self._parse_frontmatter(full_path)
+                if fm is None:
+                    continue
+
+                prop_value = fm.get(property)
+                if prop_value is None:
+                    continue
+
+                # Case-insensitive substring match
+                if value_lower not in str(prop_value).lower():
+                    continue
+
+                # Filter fields
+                if field_list:
+                    filtered = {k: v for k, v in fm.items() if k in field_list}
+                else:
+                    filtered = fm
+
+                rel_path = os.path.relpath(full_path, vault_path)
+                results.append({"file": rel_path, "properties": filtered})
+
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+
+        # Sort by rank descending if rank field exists in results
+        results.sort(key=lambda r: r["properties"].get("rank", 0) or 0, reverse=True)
+
+        return results
