@@ -671,6 +671,60 @@ def _format_prop_value(value: Any) -> str:
 
 
 # ===========================================================================
+# SECTION TOOLS — heading-scoped read/write
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_section_read(
+    path: Annotated[str, Field(description="Vault-relative path (e.g., 'atlas/note.md')")],
+    heading: Annotated[str, Field(description="Heading text without # prefix (e.g., 'Current Focus')")],
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Read content under a specific heading.
+
+    Returns the section body — all content from the heading until the next
+    heading of the same or higher level. The heading line itself is not included.
+    Operates directly on the filesystem (does not require Obsidian running).
+
+    Use ``vault_outline`` first to discover heading names in a note.
+    """
+    try:
+        result = await _run(_get_client().section_read, path=path, heading=heading, vault=vault)
+        return result if result else f"(empty section: {heading})"
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_section_read")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_section_replace(
+    path: Annotated[str, Field(description="Vault-relative path (e.g., 'atlas/note.md')")],
+    heading: Annotated[str, Field(description="Heading text without # prefix (e.g., 'Current Focus')")],
+    content: Annotated[str, Field(description="Markdown content for the section (use \\n for newlines).")],
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Replace content under a specific heading, preserving the rest of the file.
+
+    Finds the heading, removes the existing section body, and inserts ``content``
+    in its place. The heading line and all content outside the section are preserved.
+    Operates directly on the filesystem (does not require Obsidian running).
+
+    Use ``vault_section_read`` to inspect the current section before replacing.
+    """
+    try:
+        result = await _run(_get_client().section_replace, path=path, heading=heading, content=content, vault=vault)
+        return str(result)
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_section_replace")
+        return f"Error: {e}"
+
+
+# ===========================================================================
 # LINK & STRUCTURE TOOLS
 # ===========================================================================
 

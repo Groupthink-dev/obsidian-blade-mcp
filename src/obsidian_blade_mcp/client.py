@@ -814,6 +814,137 @@ class ObsidianCLI:
         return self.run("move", params, vault)
 
     # -------------------------------------------------------------------
+    # Section operations (direct filesystem — no CLI dependency)
+    # -------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_heading(line: str) -> tuple[int, str] | None:
+        """If line is a Markdown heading, return (level, text). Else None.
+
+        Recognises ATX headings only (``# Title``, ``## Title``, etc.).
+        Returns ``None`` for fenced code, blank lines, and non-heading lines.
+        """
+        stripped = line.rstrip("\r\n")
+        if not stripped.startswith("#"):
+            return None
+        i = 0
+        while i < len(stripped) and stripped[i] == "#":
+            i += 1
+        # Must have a space after the hashes (ATX heading spec)
+        if i == 0 or i >= len(stripped) or stripped[i] != " ":
+            return None
+        return i, stripped[i + 1 :].strip()
+
+    def section_read(self, path: str, heading: str, vault: str | None = None) -> str:
+        """Return content under a specific heading.
+
+        Scans the file for the first heading whose text matches ``heading``
+        (case-sensitive, exact match, no ``#`` prefix). Returns all lines
+        from that heading until the next heading of the same or higher level
+        (or EOF). The heading line itself is not included.
+
+        Args:
+            path: Vault-relative file path (e.g. ``atlas/note.md``).
+            heading: Heading text without ``#`` marks (e.g. ``Current Focus``).
+            vault: Vault name override.
+
+        Returns:
+            Section body as a string (trailing whitespace stripped).
+
+        Raises:
+            ObsidianFileNotFoundError: If the file does not exist.
+            ObsidianCLIError: If the heading is not found.
+        """
+        vault_path = self._resolve_vault_path(vault)
+        full_path = os.path.join(vault_path, path)
+        if not os.path.isfile(full_path):
+            raise ObsidianFileNotFoundError(f"File not found: {path}")
+
+        with open(full_path, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        heading_idx: int | None = None
+        heading_level: int = 0
+        for i, line in enumerate(lines):
+            parsed = self._parse_heading(line)
+            if parsed is not None and parsed[1] == heading:
+                heading_idx = i
+                heading_level = parsed[0]
+                break
+
+        if heading_idx is None:
+            raise ObsidianCLIError(f"Heading '{heading}' not found in {path}")
+
+        # Collect lines until next heading of same or higher level (lower number = higher)
+        section_lines: list[str] = []
+        for line in lines[heading_idx + 1 :]:
+            parsed = self._parse_heading(line)
+            if parsed is not None and parsed[0] <= heading_level:
+                break
+            section_lines.append(line)
+
+        return "".join(section_lines).rstrip("\n")
+
+    def section_replace(self, path: str, heading: str, content: str, vault: str | None = None) -> str:
+        """Replace content under a specific heading, preserving the rest of the file.
+
+        Finds the first heading matching ``heading`` (case-sensitive exact match),
+        removes the existing section body, and inserts ``content`` in its place.
+        The heading line and all content outside the section are preserved intact.
+
+        Args:
+            path: Vault-relative file path (e.g. ``atlas/note.md``).
+            heading: Heading text without ``#`` marks (e.g. ``Current Focus``).
+            content: New body content to place under the heading (Markdown).
+                The caller is responsible for including appropriate blank lines.
+            vault: Vault name override.
+
+        Returns:
+            Confirmation string.
+
+        Raises:
+            ObsidianFileNotFoundError: If the file does not exist.
+            ObsidianCLIError: If the heading is not found.
+        """
+        vault_path = self._resolve_vault_path(vault)
+        full_path = os.path.join(vault_path, path)
+        if not os.path.isfile(full_path):
+            raise ObsidianFileNotFoundError(f"File not found: {path}")
+
+        with open(full_path, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        heading_idx: int | None = None
+        heading_level: int = 0
+        for i, line in enumerate(lines):
+            parsed = self._parse_heading(line)
+            if parsed is not None and parsed[1] == heading:
+                heading_idx = i
+                heading_level = parsed[0]
+                break
+
+        if heading_idx is None:
+            raise ObsidianCLIError(f"Heading '{heading}' not found in {path}")
+
+        # Find end of section (next heading of same or higher level, or EOF)
+        end_idx = len(lines)
+        for i, line in enumerate(lines[heading_idx + 1 :], start=heading_idx + 1):
+            parsed = self._parse_heading(line)
+            if parsed is not None and parsed[0] <= heading_level:
+                end_idx = i
+                break
+
+        # Ensure content ends with exactly one newline so the next heading starts cleanly
+        if content and not content.endswith("\n"):
+            content += "\n"
+
+        new_lines = lines[: heading_idx + 1] + ([content] if content else []) + lines[end_idx:]
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+
+        return f"Section '{heading}' replaced in {path}"
+
+    # -------------------------------------------------------------------
     # Direct filesystem operations (no CLI dependency)
     # -------------------------------------------------------------------
 
