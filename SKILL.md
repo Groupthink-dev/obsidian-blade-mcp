@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
-description: Obsidian vault operations via CLI — read, write, search, properties, structure, tasks, bookmarks, file ops
-version: 0.4.0
+description: Obsidian vault operations via CLI — read, write, search, properties, structure, tasks, bookmarks, file ops, section ops
+version: 0.6.0
 permissions:
   read:
     - vault_info
@@ -12,6 +12,7 @@ permissions:
     - vault_recents
     - vault_property_read
     - vault_properties
+    - vault_query_properties
     - vault_search
     - vault_search_context
     - vault_tags
@@ -28,6 +29,7 @@ permissions:
     - vault_deadends
     - vault_tasks
     - vault_bookmarks
+    - vault_section_read
   write:
     - vault_create
     - vault_append
@@ -39,6 +41,7 @@ permissions:
     - vault_delete
     - vault_rename
     - vault_move
+    - vault_section_replace
 ---
 
 # Obsidian Blade MCP — Skill Guide
@@ -54,6 +57,9 @@ permissions:
 7. **Use `vault_bases` to discover .base files** — then `vault_base_query path=X` with the exact path
 8. **Use `vault_orphans`/`vault_deadends` with `total_only=true` first** — the full list is ~12K items; use `path=` to scope before requesting full list
 9. **Use `vault_outline` before `vault_read` for structure** — see headings without loading full content
+10. **Use `vault_query_properties` for bulk frontmatter scanning** — one call instead of N reads when you only need metadata
+11. **Use `vault_section_read` before `vault_section_replace`** — verify the current content before overwriting
+12. **`vault_section_read/replace` do not require Obsidian running** — direct filesystem ops; use `path=` (exact vault-relative path)
 
 ## Quick Start — 5 Most Common Operations
 
@@ -96,6 +102,13 @@ vault_search query="Docker" limit=10   → Find notes by content
 - **vault_bases** — List all `.base` files in the vault.
 - **vault_base_views** — List views in a base (requires base to be active file).
 - **vault_base_query** — Query a base for structured data. Use `path=` with `.base` extension.
+
+### Query (Bulk Frontmatter)
+- **vault_query_properties** — Scan vault for notes matching a frontmatter property value. Returns one line per match: `path | field=val`. No Obsidian required. Use `path=` to scope, `fields=` to limit returned columns, `limit=` to cap results. Sorted by `rank` descending.
+
+### Sections (Heading-Scoped Read/Write)
+- **vault_section_read** — Read content under a specific heading. Returns section body until next same-or-higher heading. No Obsidian required. Use `vault_outline` to discover heading names first.
+- **vault_section_replace** — Replace content under a heading in-place. Preserves heading line and all content outside the section. No Obsidian required. Use `vault_section_read` to inspect before replacing.
 
 ### Link & Structure
 - **vault_outline** — Heading tree with line numbers. Use before `vault_read` to preview structure.
@@ -183,6 +196,19 @@ vault_search query="Docker" limit=10   → Find notes by content
 3. vault_task_update ref="notes/Todo.md:5" action="complete"  → Check off a task
 ```
 
+### Update a Section in an Agent State Register
+```
+1. vault_outline path="atlas/utilities/agent-state/system-architect.md"  → Discover heading names
+2. vault_section_read path="atlas/utilities/agent-state/system-architect.md" heading="Recent Actions"  → Read current content
+3. vault_section_replace path="atlas/utilities/agent-state/system-architect.md" heading="Recent Actions" content="\n- 2026-03-14 — ...\n"
+```
+
+### Bulk Effort Scan (No Obsidian Required)
+```
+1. vault_query_properties property="status" value="on" path="spaces/" fields="kind,status,rank" limit=20
+   → All active efforts with rank, one line each
+```
+
 ## Common Parameters
 
 | Parameter | Description | Example |
@@ -200,6 +226,7 @@ vault_search query="Docker" limit=10   → Find notes by content
 
 ## Prerequisites
 
-- **Obsidian v1.12+** must be installed and running
+- **Obsidian v1.12+** must be installed and running (for CLI-based tools)
 - **CLI enabled** at Settings → General
 - Vault must be open in Obsidian
+- **Exception:** `vault_query_properties`, `vault_section_read`, `vault_section_replace` operate directly on the filesystem — Obsidian does **not** need to be running. Requires `OBSIDIAN_VAULT_PATH` env var set, or Obsidian running to resolve the path.
