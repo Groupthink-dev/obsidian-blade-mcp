@@ -126,6 +126,21 @@ class TestResolveVaultPath:
             with pytest.raises(ObsidianVaultError):
                 cli._resolve_vault_path()
 
+    def test_from_cli_tsv_output(self, vault_dir):
+        """CLI vault command returns TSV, not JSON — _resolve_vault_path should parse it."""
+        tsv_output = f"name\ttest-vault\npath\t{vault_dir}\nfiles\t100\nfolders\t10\nsize\t12345"
+        with patch.dict(os.environ, {}, clear=True):
+            cli = ObsidianCLI(cli_path="/usr/bin/obsidian")
+            with patch.object(cli, "vault_info", return_value=tsv_output):
+                assert cli._resolve_vault_path() == str(vault_dir)
+
+    def test_from_cli_dict_output(self, vault_dir):
+        """If CLI ever returns JSON, dict path still works."""
+        with patch.dict(os.environ, {}, clear=True):
+            cli = ObsidianCLI(cli_path="/usr/bin/obsidian")
+            with patch.object(cli, "vault_info", return_value={"path": str(vault_dir)}):
+                assert cli._resolve_vault_path() == str(vault_dir)
+
 
 class TestParseFrontmatter:
     """Test _parse_frontmatter static method."""

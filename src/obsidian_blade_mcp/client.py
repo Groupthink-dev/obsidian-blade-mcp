@@ -965,10 +965,18 @@ class ObsidianCLI:
         # Fall back to CLI vault info
         try:
             info = self.vault_info(vault=vault)
+            vault_path: str | None = None
             if isinstance(info, dict):
-                vault_path: str | None = info.get("path")
-                if vault_path and os.path.isdir(vault_path):
-                    return str(vault_path)
+                vault_path = info.get("path")
+            elif isinstance(info, str):
+                # CLI vault command returns TSV, not JSON — parse it
+                for line in info.splitlines():
+                    parts = line.split("\t", 1)
+                    if len(parts) == 2 and parts[0] == "path":
+                        vault_path = parts[1]
+                        break
+            if vault_path and os.path.isdir(vault_path):
+                return str(vault_path)
         except ObsidianCLIError:
             pass
 

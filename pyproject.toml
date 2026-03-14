@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-blade-mcp"
-version = "0.6.0"
+version = "0.6.1"
 description = "Obsidian CLI MCP Server — precision vault tools via subprocess"
 readme = "README.md"
 license = {text = "MIT"}
