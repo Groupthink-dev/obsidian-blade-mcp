@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-blade-mcp"
-version = "0.7.0"
+version = "0.7.1"
 description = "Obsidian CLI MCP Server — precision vault tools via subprocess"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,7 +19,7 @@ dependencies = [
     "fastmcp>=2.0.0",
     "httpx>=0.28.1",
     "pyyaml>=6.0",
-    "obsidian-lens>=0.5.0",
+    "obsidian-lens[mlx]>=0.5.0",
 ]
 
 [tool.uv.sources]
