@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
-description: Obsidian vault operations via CLI — read, write, search, properties, structure, tasks, bookmarks, file ops, section ops
-version: 0.6.0
+description: Obsidian vault operations via CLI — read, write, search, properties, structure, tasks, bookmarks, file ops, section ops, lens index
+version: 0.7.0
 permissions:
   read:
     - vault_info
@@ -30,6 +30,11 @@ permissions:
     - vault_tasks
     - vault_bookmarks
     - vault_section_read
+    - vault_lens_fts
+    - vault_lens_search
+    - vault_lens_related
+    - vault_lens_connections
+    - vault_lens_status
   write:
     - vault_create
     - vault_append
@@ -60,6 +65,9 @@ permissions:
 10. **Use `vault_query_properties` for bulk frontmatter scanning** — one call instead of N reads when you only need metadata
 11. **Use `vault_section_read` before `vault_section_replace`** — verify the current content before overwriting
 12. **`vault_section_read/replace` do not require Obsidian running** — direct filesystem ops; use `path=` (exact vault-relative path)
+13. **Use `vault_lens_fts` for keyword search** — faster than `vault_search` and returns ranked results with snippets
+14. **Use `vault_lens_status` before lens queries** — verify the index is current; stale heartbeat means results may be outdated
+15. **Prefer `vault_lens_fts` over `vault_lens_search`** — hybrid search loads the embedding model; use FTS when keywords suffice
 
 ## Quick Start — 5 Most Common Operations
 
@@ -131,6 +139,13 @@ vault_search query="Docker" limit=10   → Find notes by content
 - **vault_delete** — Delete a file. Moves to trash by default. Use `permanent=true` to permanently delete (IRREVERSIBLE).
 - **vault_rename** — Rename a file. Obsidian updates all wikilinks automatically.
 - **vault_move** — Move a file to a new folder. Obsidian updates all wikilinks automatically.
+
+### Lens Tools (SQLite Index)
+- **vault_lens_fts** — BM25 keyword search via FTS5. Supports boolean operators, phrase queries. Use `kind=`, `status=`, `folder=` filters. Fast — no embeddings needed.
+- **vault_lens_search** — Hybrid search (BM25 + semantic). Best for natural language queries. Requires embeddings indexed.
+- **vault_lens_related** — Find similar notes by embedding similarity. Ignores link structure.
+- **vault_lens_connections** — N-hop graph traversal via materialised wikilink graph. Use `hops=` (1-3), `direction=` (outgoing/incoming/both).
+- **vault_lens_status** — Index health: note/link counts, kind distribution, daemon heartbeat. Check before querying.
 
 ### Properties (Atomic Frontmatter)
 - **vault_property_read** — Read one property value.
@@ -224,9 +239,19 @@ vault_search query="Docker" limit=10   → Find notes by content
 | `ref` | Task reference (path:line) | `ref="notes/Todo.md:5"` |
 | `destination` | Target folder for move | `destination="spaces/Systems/"` |
 
+### Lens-Powered Discovery
+```
+1. vault_lens_status                          → Check index health
+2. vault_lens_fts query="Docker" kind="note"  → Fast keyword search
+3. vault_lens_search query="container orchestration" k=5  → Semantic + keyword hybrid
+4. vault_lens_related path="spaces/Systems/Areas/.../Docker.md" k=5  → Similar notes
+5. vault_lens_connections path="spaces/.../Docker.md" hops=2  → Link neighbourhood
+```
+
 ## Prerequisites
 
 - **Obsidian v1.12+** must be installed and running (for CLI-based tools)
 - **CLI enabled** at Settings → General
 - Vault must be open in Obsidian
 - **Exception:** `vault_query_properties`, `vault_section_read`, `vault_section_replace` operate directly on the filesystem — Obsidian does **not** need to be running. Requires `OBSIDIAN_VAULT_PATH` env var set, or Obsidian running to resolve the path.
+- **Lens tools** (`vault_lens_*`) require `OBSIDIAN_VAULT_PATH` env var and a built index (`obsidian-lens reindex`). The lens daemon should be running for up-to-date results. Obsidian desktop is **not** required.

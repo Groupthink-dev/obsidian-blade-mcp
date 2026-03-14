@@ -28,6 +28,7 @@ from obsidian_blade_mcp.formatters import (
     format_task_list,
     format_vault_info,
 )
+from obsidian_blade_mcp.lens import format_lens_results, get_lens_connection, heartbeat_warning
 from obsidian_blade_mcp.models import DEFAULT_LIMIT
 
 logger = logging.getLogger(__name__)
@@ -1056,6 +1057,167 @@ async def vault_move(
         return _error_response(e)
     except Exception as e:
         logger.exception("Unexpected error in vault_move")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# LENS TOOLS (obsidian-lens SQLite index)
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_lens_fts(
+    query: Annotated[str, Field(description="FTS5 search query (supports AND, OR, NOT, phrase quotes)")],
+    kind: Annotated[str | None, Field(description="Filter by frontmatter kind (e.g., 'effort', 'note')")] = None,
+    status: Annotated[str | None, Field(description="Filter by frontmatter status (e.g., 'on', 'done')")] = None,
+    folder: Annotated[str | None, Field(description="Filter by folder path substring")] = None,
+    limit: Annotated[int, Field(description="Max results (default: 20)")] = DEFAULT_LIMIT,
+) -> str:
+    """BM25 keyword search over the vault index.
+
+    Fast full-text search using SQLite FTS5. Supports boolean operators
+    (AND, OR, NOT) and phrase queries ("exact phrase"). Use ``kind=``,
+    ``status=``, ``folder=`` to narrow results. Returns ranked results
+    with snippets.
+    """
+    try:
+        conn = await _run(get_lens_connection)
+        warning = await _run(heartbeat_warning, conn)
+
+        from obsidian_lens.query import Filters, fts
+
+        filters = Filters(kind=kind, status=status, folder=folder)
+        results = await _run(fts, conn, query, filters=filters, limit=limit)
+        return warning + format_lens_results(results, label="matches")
+    except RuntimeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        logger.exception("Unexpected error in vault_lens_fts")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_lens_search(
+    query: Annotated[str, Field(description="Natural language search query")],
+    k: Annotated[int, Field(description="Number of results (default: 10)")] = 10,
+    kind: Annotated[str | None, Field(description="Filter by frontmatter kind")] = None,
+    status: Annotated[str | None, Field(description="Filter by frontmatter status")] = None,
+) -> str:
+    """Hybrid search combining keyword (BM25) and semantic (embedding) similarity.
+
+    Uses Reciprocal Rank Fusion to merge FTS5 and vector search results.
+    Best for natural language queries where you want both exact matches and
+    semantically related notes. Requires embeddings to be indexed.
+    """
+    try:
+        conn = await _run(get_lens_connection)
+        warning = await _run(heartbeat_warning, conn)
+
+        from obsidian_lens.query import Filters, hybrid
+
+        filters = Filters(kind=kind, status=status)
+        results = await _run(hybrid, conn, query, k=k, filters=filters)
+        return warning + format_lens_results(results, label="results")
+    except RuntimeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        logger.exception("Unexpected error in vault_lens_search")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_lens_related(
+    path: Annotated[str, Field(description="Vault-relative path of the note (e.g., 'spaces/Systems/note.md')")],
+    k: Annotated[int, Field(description="Number of similar notes (default: 10)")] = 10,
+) -> str:
+    """Find notes similar to a given note by embedding similarity.
+
+    Returns notes ranked by semantic similarity, regardless of whether they
+    are linked. Useful for discovering related content. Requires embeddings.
+    """
+    try:
+        conn = await _run(get_lens_connection)
+        warning = await _run(heartbeat_warning, conn)
+
+        from obsidian_lens.query import related
+
+        results = await _run(related, conn, path, k=k)
+        return warning + format_lens_results(results, label="similar notes")
+    except RuntimeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        logger.exception("Unexpected error in vault_lens_related")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_lens_connections(
+    path: Annotated[str, Field(description="Vault-relative path of the starting note")],
+    hops: Annotated[int, Field(description="Number of link hops to traverse (1-3, default: 1)")] = 1,
+    direction: Annotated[
+        str, Field(description="Link direction: 'outgoing', 'incoming', or 'both' (default: 'both')")
+    ] = "both",
+) -> str:
+    """N-hop graph traversal from a note via the materialised wikilink graph.
+
+    Returns all notes reachable within N hops, with direction and depth.
+    Uses recursive CTE for efficient traversal. Max 3 hops.
+    """
+    try:
+        conn = await _run(get_lens_connection)
+        warning = await _run(heartbeat_warning, conn)
+
+        from obsidian_lens.query import connections
+
+        results = await _run(connections, conn, path, hops=hops, direction=direction)
+
+        from obsidian_blade_mcp.lens import format_connections
+
+        return warning + format_connections(results)
+    except RuntimeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        logger.exception("Unexpected error in vault_lens_connections")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_lens_status() -> str:
+    """Index health: note/link counts, kind distribution, daemon heartbeat.
+
+    Use to verify the lens index is current before running search queries.
+    """
+    try:
+        conn = await _run(get_lens_connection)
+
+        from obsidian_lens.query import status_summary
+
+        summary = await _run(status_summary, conn)
+
+        lines: list[str] = [
+            f"Notes: {summary['note_count']}",
+            f"Links: {summary['link_count']}",
+        ]
+
+        if summary.get("kind_counts"):
+            kinds = ", ".join(f"{k}={v}" for k, v in summary["kind_counts"].items())
+            lines.append(f"Kinds: {kinds}")
+
+        hb = summary.get("heartbeat")
+        if hb:
+            lines.append(
+                f"Daemon: status={hb.get('status', '?')}, "
+                f"last_beat={hb.get('last_beat', '?')}, pid={hb.get('pid', '?')}"
+            )
+        else:
+            lines.append("Daemon: no heartbeat recorded")
+
+        warning = await _run(heartbeat_warning, conn)
+        return warning + "\n".join(lines)
+    except RuntimeError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        logger.exception("Unexpected error in vault_lens_status")
         return f"Error: {e}"
 
 
