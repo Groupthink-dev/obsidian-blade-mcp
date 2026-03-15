@@ -15,7 +15,6 @@ from obsidian_blade_mcp.formatters import (
     format_tag_list,
     format_task_list,
     format_vault_info,
-    truncate_content,
 )
 
 
@@ -116,21 +115,6 @@ class TestFormatVaultInfo:
     def test_string_passthrough(self):
         assert format_vault_info("raw output") == "raw output"
 
-
-class TestTruncateContent:
-    """Test content truncation."""
-
-    def test_short_content(self):
-        content = "Short\ncontent"
-        assert truncate_content(content) == content
-
-    def test_long_content(self):
-        content = "\n".join(f"Line {i}" for i in range(200))
-        result = truncate_content(content, max_lines=100)
-        assert "100 more lines" in result
-        assert "Line 0" in result
-        assert "Line 99" in result
-        assert "Line 100" not in result.split("…")[0]
 
 
 class TestFormatSearchResults:

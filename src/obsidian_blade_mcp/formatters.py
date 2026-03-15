@@ -372,14 +372,6 @@ def format_bookmark_list(
     return "\n".join(lines)
 
 
-def truncate_content(content: str, max_lines: int = 100) -> str:
-    """Truncate long content with annotation."""
-    lines = content.split("\n")
-    if len(lines) <= max_lines:
-        return content
-    truncated = "\n".join(lines[:max_lines])
-    return f"{truncated}\n\n… ({len(lines) - max_lines} more lines, use vault_read for full content)"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
