@@ -250,6 +250,8 @@ These apply to the file backend. The cli backend is Obsidian's own behaviour.
 
 ## Development
 
+Release notes live in [CHANGELOG.md](CHANGELOG.md).
+
 ```bash
 make install-dev    # uv sync with dev and test groups
 make check          # ruff lint, ruff format --check, mypy
