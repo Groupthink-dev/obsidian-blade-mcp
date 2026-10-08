@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
 description: Obsidian vault operations — read, write, search, properties, structure, tasks, bookmarks, daily notes, templates. Works with Obsidian running (CLI backend) or closed (file backend). Read-only unless the server runs with OBSIDIAN_MCP_WRITES=1.
-version: 1.0.0
+version: 1.1.0
 permissions:
   read:
     - vault_info
@@ -51,7 +51,7 @@ permissions:
 
 ## Backends
 
-Every response ends with `[backend: cli]` or `[backend: file]`.
+Every response ends with `[backend: cli]` or `[backend: file]`. On the file backend a scan that stops at a bound adds a `[partial: ...]` line before the backend tag; treat such results as incomplete.
 
 - **cli** — Obsidian desktop is running and the CLI is enabled. Uses Obsidian's own index: search, Bases, tasks, link graph, templates. Obsidian updates wikilinks on rename/move.
 - **file** — Obsidian is closed or not installed. Reads and writes the vault directory at `OBSIDIAN_VAULT_PATH` directly. Deterministic parsing only. Not available: `vault_base_views`, `vault_base_query`, `vault_bookmark_add` (they return `Error: backend_unsupported`). There is no active note: always pass `file=` or `path=`.

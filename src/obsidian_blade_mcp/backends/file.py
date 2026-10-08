@@ -38,6 +38,26 @@ CONFIG_DIR = ".obsidian"
 TRASH_DIR = ".trash"
 EXCLUDED_DIRS = frozenset({CONFIG_DIR, TRASH_DIR, ".git"})
 
+# Partial-result register. A scan that hits a bound records one line here; the server's trailer middleware
+# drains it after each tool call and appends it to the response as ``[partial: ...]``. Process-wide on purpose:
+# the cli backend builds a throwaway FileBackend per delegated call, so instance state would be lost.
+_partial_notes: list[str] = []
+
+
+def note_partial(message: str) -> None:
+    """Record that the current scan stopped at a bound; the response will carry ``[partial: message]``."""
+    logger.warning("%s; results are partial", message)
+    if message not in _partial_notes:
+        _partial_notes.append(message)
+
+
+def take_partial() -> list[str]:
+    """Return and clear the partial-result notes recorded since the last call."""
+    notes = list(_partial_notes)
+    _partial_notes.clear()
+    return notes
+
+
 _WIKILINK = re.compile(r"!?\[\[([^\]\|#]+)(?:#[^\]\|]*)?(?:\|[^\]]*)?\]\]")
 _MDLINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+\.md)(?:#[^)]*)?\)")
 _TAG = re.compile(r"(?<![\w/#&])#([A-Za-z_][\w/-]*)")
@@ -276,7 +296,7 @@ class FileBackend:
                     continue
                 out.append(self._rel(full))
                 if len(out) >= MAX_SCAN_FILES:
-                    logger.warning("listing bound reached (%d files); results are partial", len(out))
+                    note_partial(f"listing bound reached at {len(out)} files")
                     return out
         return out
 
@@ -291,7 +311,7 @@ class FileBackend:
             total += len(text)
             yield rel, text
             if total >= MAX_SCAN_BYTES:
-                logger.warning("read bound reached (%d bytes); results are partial", total)
+                note_partial(f"read bound reached at {total} bytes")
                 return
 
     def _notes(self, folder: str | None = None) -> list[str]:
@@ -464,6 +484,7 @@ class FileBackend:
             for d in dirnames:
                 out.append(self._rel(os.path.join(dirpath, d)))
                 if len(out) >= MAX_SCAN_FILES:
+                    note_partial(f"folder listing bound reached at {len(out)} folders")
                     return out
         return out
 

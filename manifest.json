@@ -1,6 +1,6 @@
 {
   "name": "obsidian-blade-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Obsidian vault MCP — Obsidian CLI when the app runs, direct file access when it does not. Read-only by default.",
   "author": "Piers",
   "license": "MIT",

@@ -95,6 +95,7 @@ make run           # Start the MCP server (stdio transport)
   `tests/test_subprocess_hygiene.py` greps for the shell form
 - `tests/test_file_backend.py` exercises the file backend against a tmp vault; keep it in step
   with any CLI-shape change
+- File-backend scans that hit a bound call `note_partial()`; `BackendTagMiddleware` drains `take_partial()` after each call and emits `[partial: ...]` before the backend tag
 - `format=json` requested where CLI supports it
 - Multi-vault via `OBSIDIAN_VAULT_NAME` env var + per-tool `vault=` override
 - Typed exception hierarchy maps CLI error patterns to Python exceptions

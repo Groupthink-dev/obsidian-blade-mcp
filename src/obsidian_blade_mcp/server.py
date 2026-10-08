@@ -17,7 +17,9 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from mcp.types import TextContent
 from pydantic import Field
 
+from obsidian_blade_mcp import __version__
 from obsidian_blade_mcp.backend import WRITES_ENV, VaultBackend, select_backend, writes_enabled
+from obsidian_blade_mcp.backends.file import take_partial
 from obsidian_blade_mcp.client import ObsidianCLIError, ObsidianConflictError
 from obsidian_blade_mcp.formatters import (
     format_bookmark_list,
@@ -60,6 +62,7 @@ HTTP_PORT = int(os.environ.get("OBSIDIAN_MCP_PORT", "8766"))
 
 mcp = FastMCP(
     "ObsidianBlade",
+    version=__version__,
     instructions=(
         "Obsidian vault operations. Two backends: 'cli' when Obsidian desktop is running (uses Obsidian's own "
         "index: search, Bases, tasks, link graph) and 'file' when it is not (direct vault access from "
@@ -121,15 +124,25 @@ def _backend_name() -> str | None:
 
 
 class BackendTagMiddleware(Middleware):
-    """Append ``[backend: cli|file]`` to every tool result so consumers know which index answered."""
+    """Append ``[backend: cli|file]`` to every tool result so consumers know which index answered.
+
+    When a file-backend scan stopped at a bound during the call, a ``[partial: ...]`` line precedes the
+    backend tag. The register is process-wide, so two tool calls that overlap in time could each see the
+    other's note; the marker is advisory.
+    """
 
     async def on_call_tool(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        take_partial()
         result = await call_next(context)
         name = _backend_name()
+        partial = take_partial()
         if name and getattr(result, "content", None):
             last = result.content[-1]
             if isinstance(last, TextContent) and not last.text.rstrip().endswith(f"[backend: {name}]"):
-                last.text = f"{last.text.rstrip()}\n[backend: {name}]"
+                lines = [last.text.rstrip()]
+                lines.extend(f"[partial: {p}]" for p in partial)
+                lines.append(f"[backend: {name}]")
+                last.text = "\n".join(lines)
         return result
 
 
