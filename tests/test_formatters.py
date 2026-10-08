@@ -116,7 +116,6 @@ class TestFormatVaultInfo:
         assert format_vault_info("raw output") == "raw output"
 
 
-
 class TestFormatSearchResults:
     """Test search result formatting."""
 

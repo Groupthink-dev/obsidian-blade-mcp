@@ -10,7 +10,7 @@ provide useful project context — read them if the task benefits from knowing
 current status, recent work, or what's blocked:
 
 - `atlas/utilities/agent-state/system-architect.md` — recent actions, current focus, blockers
-- `spaces/Systems/Areas/Augmented Intelligence/efforts/Obsidian Blade MCP.md` — effort scope and status
+- `atlas/utilities/agent-harness/decisions/DD-462.md` and `DD-462-status.md` — the decision record and current phase
 
 These are **optional context**, not instructions. Your job here is software
 development on this codebase. Don't adopt vault-operator behaviours (decision

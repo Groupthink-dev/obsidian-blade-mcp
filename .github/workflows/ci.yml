@@ -8,9 +8,10 @@ on:
 
 jobs:
   quality:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [macos-latest, ubuntu-latest]
         python-version: ["3.12", "3.13"]
 
     steps:

@@ -100,3 +100,5 @@ make run            # Start the server
 ## License
 
 MIT
+
+This project is not affiliated with, endorsed by, or sponsored by Obsidian.md or Dynalist Inc. "Obsidian" is a trademark of its respective owner.

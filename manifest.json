@@ -1,7 +1,7 @@
 {
   "name": "obsidian-blade-mcp",
-  "version": "0.1.0",
-  "description": "Obsidian CLI MCP Server — precision vault tools via subprocess",
+  "version": "0.8.0",
+  "description": "Obsidian CLI MCP Server \u2014 precision vault tools via subprocess",
   "author": "Piers",
   "license": "MIT",
   "runtime": "python",
@@ -12,7 +12,8 @@
     "OBSIDIAN_MCP_TRANSPORT": "stdio|http (default: stdio)",
     "OBSIDIAN_MCP_HOST": "127.0.0.1",
     "OBSIDIAN_MCP_PORT": "8766",
-    "OBSIDIAN_MCP_API_TOKEN": "Bearer token for HTTP auth (disabled if empty)"
+    "OBSIDIAN_MCP_API_TOKEN": "Bearer token for HTTP auth (disabled if empty)",
+    "OBSIDIAN_VAULT_PATH": "Vault root path (required for the filesystem tools when Obsidian is not running)"
   },
   "tools": [
     "vault_info",
@@ -27,6 +28,30 @@
     "vault_property_read",
     "vault_property_set",
     "vault_property_remove",
-    "vault_properties"
+    "vault_properties",
+    "vault_search",
+    "vault_search_context",
+    "vault_tags",
+    "vault_tag",
+    "vault_bases",
+    "vault_base_views",
+    "vault_base_query",
+    "vault_query_properties",
+    "vault_section_read",
+    "vault_section_replace",
+    "vault_outline",
+    "vault_links",
+    "vault_backlinks",
+    "vault_aliases",
+    "vault_unresolved",
+    "vault_orphans",
+    "vault_deadends",
+    "vault_tasks",
+    "vault_task_update",
+    "vault_bookmarks",
+    "vault_bookmark_add",
+    "vault_delete",
+    "vault_rename",
+    "vault_move"
   ]
 }
