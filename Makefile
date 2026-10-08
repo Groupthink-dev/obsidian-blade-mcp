@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync test test-unit test-e2e test-cov lint format format-check type-check check clean run server pre-commit-install pre-commit-run
+.PHONY: help install install-dev sync test test-unit test-e2e test-cov lint format format-check type-check check check-linux clean run server pre-commit-install pre-commit-run
 
 help:
 	@echo "Available targets:"
@@ -14,6 +14,7 @@ help:
 	@echo "  make format-check     - Check formatting without fixing"
 	@echo "  make type-check       - Run mypy type checker"
 	@echo "  make check            - Run all quality checks (lint + format + type-check)"
+	@echo "  make check-linux      - Run the Woodpecker lane in podman (Linux, no Obsidian)"
 	@echo "  make clean            - Clean build artifacts and cache"
 	@echo "  make run              - Run the MCP server"
 	@echo "  make server           - Alias for 'run'"
@@ -58,6 +59,20 @@ type-check:
 
 check: lint format-check type-check
 	@echo "All quality checks passed!"
+
+# The same commands as .woodpecker/validation.yaml, on the same image tag, with no
+# obsidian binary on PATH. Native arch; the lane itself runs linux/amd64.
+CONTAINER ?= podman
+check-linux:
+	$(CONTAINER) run --rm -v "$(CURDIR)":/w:ro -w /tmp docker.io/library/python:3.13-bookworm bash -ec '\
+	  cp -r /w /src && cd /src && rm -rf .venv; \
+	  export UV_PYTHON_DOWNLOADS=never UV_PYTHON=3.13 UV_CACHE_DIR=/tmp/uv; \
+	  pip install --quiet --disable-pip-version-check --root-user-action=ignore uv; \
+	  uv sync --group dev --group test --frozen; \
+	  uv run ruff check src/ tests/; \
+	  uv run ruff format --check src/ tests/; \
+	  uv run mypy src/obsidian_blade_mcp; \
+	  uv run pytest tests/ -m "not e2e" -q'
 
 # Pre-commit
 pre-commit-install:
