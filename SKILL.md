@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
-description: Obsidian vault operations — read, write, search, properties, structure, tasks, bookmarks, daily notes, templates. Works with Obsidian running (CLI backend) or closed (file backend).
-version: 0.9.0
+description: Obsidian vault operations — read, write, search, properties, structure, tasks, bookmarks, daily notes, templates. Works with Obsidian running (CLI backend) or closed (file backend). Read-only unless the server runs with OBSIDIAN_MCP_WRITES=1.
+version: 1.0.0
 permissions:
   read:
     - vault_info
@@ -57,6 +57,13 @@ Every response ends with `[backend: cli]` or `[backend: file]`.
 - **file** — Obsidian is closed or not installed. Reads and writes the vault directory at `OBSIDIAN_VAULT_PATH` directly. Deterministic parsing only. Not available: `vault_base_views`, `vault_base_query`, `vault_bookmark_add` (they return `Error: backend_unsupported`). There is no active note: always pass `file=` or `path=`.
 
 The backend is chosen once per process (`OBSIDIAN_MCP_BACKEND=auto|cli|file`, default `auto`). The blade never launches Obsidian.
+
+## Safety Model
+
+- **Read-only by default.** The twelve write tools exist only when the server was started with `OBSIDIAN_MCP_WRITES=1`. If a write tool is missing from the tool list, the operator has not enabled writes; say so, do not work around it.
+- **Confirm destructive ops.** `vault_delete`, `vault_rename` and `vault_move` return a dry-run plan unless `confirm=true`. Always call once without `confirm`, read the exact `source` and `destination` (and `notes_with_links_to_rewrite`), then call again with `confirm=true`.
+- **Hash preconditions.** `vault_file_info` returns `hash: sha256:...`. Pass it as `if_hash=` to any content edit (`append`, `prepend`, `section_replace`, `property_set`, `property_remove`, `task_update`, `delete`, `rename`, `move`). A changed note returns `Error: conflict: ...` with both hashes and nothing is written. Use it whenever a human may be editing the same note.
+- **Path containment.** The file backend refuses `..`, symlink escapes and writes under `.obsidian/`, `.trash/` and `.git/`.
 
 ## Token Efficiency Rules (MANDATORY)
 
@@ -139,10 +146,10 @@ vault_search query="Docker" limit=10   → Find notes by content
 - **vault_bookmarks** — List all bookmarks (files, folders, searches, URLs).
 - **vault_bookmark_add** — Add a bookmark. Use `path=`, `search=`, or `url=`.
 
-### File Operations
-- **vault_delete** — Delete a file. Moves to trash by default. Use `permanent=true` to permanently delete (IRREVERSIBLE).
-- **vault_rename** — Rename a file. Wikilinks are updated (by Obsidian on `cli`, by the blade on `file`).
-- **vault_move** — Move a file to a new folder. Bare `[[name]]` links keep resolving; path-qualified links are rewritten.
+### File Operations (dry run unless `confirm=true`)
+- **vault_delete** — Delete a file. Moves to trash by default. Use `permanent=true` to permanently delete (IRREVERSIBLE). Without `confirm=true` returns the plan.
+- **vault_rename** — Rename a file. Wikilinks are updated (by Obsidian on `cli`, by the blade on `file`). The dry run reports how many notes would be rewritten.
+- **vault_move** — Move a file to a new folder. Bare `[[name]]` links keep resolving; path-qualified links are rewritten. Without `confirm=true` returns the plan.
 
 ### Daily Notes & Templates
 - **vault_daily_read** — Today's daily note (path from the Daily notes plugin settings).
@@ -240,8 +247,11 @@ vault_search query="Docker" limit=10   → Find notes by content
 | `content` | Markdown content | `content="# Hello\nBody"` |
 | `ref` | Task reference (path:line) | `ref="notes/Todo.md:5"` |
 | `destination` | Target folder for move | `destination="spaces/Systems/"` |
+| `confirm` | Apply delete/rename/move (else dry run) | `confirm=true` |
+| `if_hash` | Content hash precondition from `vault_file_info` | `if_hash="sha256:eff3..."` |
 
 ## Prerequisites
 
 - **cli backend:** Obsidian v1.12+ installed and running, CLI enabled at Settings → General, vault open.
+- **writes:** the server must run with `OBSIDIAN_MCP_WRITES=1`; otherwise only the 28 read tools are present.
 - **file backend:** `OBSIDIAN_VAULT_PATH` set to the vault directory. No Obsidian needed. On a server, keep the vault fresh with Obsidian Headless (`ob sync --continuous`) or any other sync.

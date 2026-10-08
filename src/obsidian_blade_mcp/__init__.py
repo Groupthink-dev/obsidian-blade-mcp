@@ -1,3 +1,3 @@
-"""Obsidian CLI MCP Server — precision vault tools via subprocess."""
+"""Obsidian Blade MCP — vault tools over the Obsidian CLI or the vault directory."""
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"

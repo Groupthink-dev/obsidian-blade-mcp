@@ -735,7 +735,7 @@ class TestVaultDelete:
         mock_client.delete_file.return_value = ""
         mock_get_client.return_value = mock_client
 
-        result = await vault_delete(path="notes/Old.md")
+        result = await vault_delete(path="notes/Old.md", confirm=True)
         assert "Deleted" in result
         assert "trash" in result
 
@@ -747,7 +747,7 @@ class TestVaultDelete:
         mock_client.delete_file.return_value = ""
         mock_get_client.return_value = mock_client
 
-        result = await vault_delete(path="notes/Old.md", permanent=True)
+        result = await vault_delete(path="notes/Old.md", permanent=True, confirm=True)
         assert "Permanently deleted" in result
 
     @patch("obsidian_blade_mcp.server._get_client")
@@ -759,7 +759,7 @@ class TestVaultDelete:
         mock_client.delete_file.side_effect = ObsidianFileNotFoundError("not found")
         mock_get_client.return_value = mock_client
 
-        result = await vault_delete(path="missing.md")
+        result = await vault_delete(path="missing.md", confirm=True)
         assert "Error" in result
 
 
@@ -774,7 +774,7 @@ class TestVaultRename:
         mock_client.rename.return_value = ""
         mock_get_client.return_value = mock_client
 
-        result = await vault_rename(path="notes/Old.md", new_name="New Name")
+        result = await vault_rename(path="notes/Old.md", new_name="New Name", confirm=True)
         assert "Renamed" in result
         assert "Old.md" in result
         assert "New Name" in result
@@ -788,7 +788,7 @@ class TestVaultRename:
         mock_client.rename.side_effect = ObsidianFileNotFoundError("not found")
         mock_get_client.return_value = mock_client
 
-        result = await vault_rename(path="missing.md", new_name="New")
+        result = await vault_rename(path="missing.md", new_name="New", confirm=True)
         assert "Error" in result
 
 
@@ -803,7 +803,7 @@ class TestVaultMove:
         mock_client.move.return_value = ""
         mock_get_client.return_value = mock_client
 
-        result = await vault_move(path="notes/Note.md", destination="archive/")
+        result = await vault_move(path="notes/Note.md", destination="archive/", confirm=True)
         assert "Moved" in result
         assert "Note.md" in result
         assert "archive/" in result
@@ -817,5 +817,5 @@ class TestVaultMove:
         mock_client.move.side_effect = ObsidianFileNotFoundError("not found")
         mock_get_client.return_value = mock_client
 
-        result = await vault_move(path="missing.md", destination="archive/")
+        result = await vault_move(path="missing.md", destination="archive/", confirm=True)
         assert "Error" in result

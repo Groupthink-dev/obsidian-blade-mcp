@@ -121,8 +121,10 @@ class TestServerIntegration:
         (vault / ".obsidian" / "templates.json").write_text('{"folder": "tpl"}')
         (vault / "tpl").mkdir()
         (vault / "tpl" / "t.md").write_text("tpl body")
-        with patch.dict(os.environ, {"OBSIDIAN_MCP_BACKEND": "file", "OBSIDIAN_VAULT_PATH": str(vault)}):
+        env = {"OBSIDIAN_MCP_BACKEND": "file", "OBSIDIAN_VAULT_PATH": str(vault), "OBSIDIAN_MCP_WRITES": "1"}
+        with patch.dict(os.environ, env):
             server._client = None
+            server.apply_write_policy()
             try:
                 async with Client(server.mcp) as c:
                     tools = {t.name for t in await c.list_tools()}
@@ -136,6 +138,7 @@ class TestServerIntegration:
                     assert res.content[0].text.startswith("Error: backend_unsupported")
             finally:
                 server._client = None
+                server.apply_write_policy()
 
     async def test_tag_absent_before_selection(self):
         from obsidian_blade_mcp import server

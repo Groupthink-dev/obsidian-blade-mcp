@@ -9,10 +9,12 @@ All commands request ``format=json`` where supported for structured output.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -54,6 +56,44 @@ class ObsidianFileNotFoundError(ObsidianCLIError):
 
 class ObsidianTimeoutError(ObsidianCLIError):
     """CLI command timed out."""
+
+
+class ObsidianConflictError(ObsidianCLIError):
+    """A content-hash precondition did not match the file on disk."""
+
+    def __init__(self, path: str, expected: str, actual: str) -> None:
+        super().__init__(
+            f"conflict: {path} changed since it was read (expected {expected}, found {actual}); "
+            "re-read the file and retry with the current hash",
+            returncode=1,
+        )
+        self.path = path
+        self.expected = expected
+        self.actual = actual
+
+
+def content_hash_of(text: str) -> str:
+    """Hash note content the way both backends report it: ``sha256:<hex>`` over UTF-8 bytes."""
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# Argument hygiene for the CLI argv. Commands, parameter keys and flags are
+# bare words; values travel as ``key=value`` so no argv element can start with
+# ``-`` or carry a newline. ``subprocess.run`` is always list-form, never the
+# shell form, which ``tests/test_subprocess_hygiene.py`` enforces.
+_ARG_WORD = re.compile(r"\A[a-z][a-z0-9:_-]*\Z")
+
+
+def _check_word(kind: str, word: str) -> str:
+    if not _ARG_WORD.match(word):
+        raise ObsidianCLIError(f"Refusing unsafe CLI {kind}: {word!r}", returncode=1)
+    return word
+
+
+def _check_value(key: str, value: str) -> str:
+    if "\0" in value:
+        raise ObsidianCLIError(f"Refusing CLI value with NUL byte for {key}", returncode=1)
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -211,28 +251,29 @@ class ObsidianCLI:
         # Vault targeting — must come first
         effective_vault = vault or self.vault_name
         if effective_vault:
-            args.append(f"vault={effective_vault}")
+            args.append(f"vault={_check_value('vault', str(effective_vault))}")
 
         # Command
-        args.append(command)
+        args.append(_check_word("command", command))
 
         # Parameters
         if params:
             for key, value in params.items():
                 if value is None:
                     continue
+                _check_word("parameter", key)
                 if isinstance(value, bool):
                     if value:
                         args.append(key)
                 elif isinstance(value, (int, float)):
                     args.append(f"{key}={value}")
                 else:
-                    args.append(f"{key}={value}")
+                    args.append(f"{key}={_check_value(key, str(value))}")
 
         # Flags
         if flags:
             for flag in flags:
-                args.append(flag)
+                args.append(_check_word("flag", flag))
 
         return args
 
@@ -860,6 +901,34 @@ class ObsidianCLI:
         self._assert_vault_match(vault)
         params: dict[str, Any] = {"path": path, "to": to}
         return self.run("move", params, vault)
+
+    # -------------------------------------------------------------------
+    # Safety helpers (Phase C)
+    # -------------------------------------------------------------------
+
+    def content_hash(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> str:
+        """``sha256:<hex>`` of the note's current content, read through the CLI.
+
+        The check is best effort on this backend: the read and the following
+        write are two CLI calls, so a concurrent edit between them is possible.
+        """
+        return content_hash_of(self.read(file=file, path=path, vault=vault))
+
+    def mutation_plan(
+        self, op: str, path: str, to: str | None = None, permanent: bool = False, vault: str | None = None
+    ) -> dict[str, Any]:
+        """Describe what ``delete``/``rename``/``move`` would do, without doing it."""
+        info = self.file_info(path=path, vault=vault)
+        plan: dict[str, Any] = {"op": op, "source": info.get("path", path) if isinstance(info, dict) else path}
+        if op == "delete":
+            plan["destination"] = "permanent (unrecoverable)" if permanent else "system trash"
+        elif op == "rename":
+            plan["destination"] = f"{to} (same folder)"
+            plan["links"] = "Obsidian rewrites links to this note"
+        elif op == "move":
+            plan["destination"] = f"{to}/{os.path.basename(path)}".replace("//", "/")
+            plan["links"] = "Obsidian rewrites links to this note"
+        return plan
 
     # -------------------------------------------------------------------
     # Daily notes and templates

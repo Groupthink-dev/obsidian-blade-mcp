@@ -29,6 +29,18 @@ logger = logging.getLogger(__name__)
 
 BACKEND_ENV = "OBSIDIAN_MCP_BACKEND"
 VAULT_PATH_ENV = "OBSIDIAN_VAULT_PATH"
+WRITES_ENV = "OBSIDIAN_MCP_WRITES"
+
+_TRUE = {"1", "true", "yes", "on"}
+
+
+def writes_enabled() -> bool:
+    """True when ``OBSIDIAN_MCP_WRITES`` opts the process into the mutation tools.
+
+    The default is read-only: the twelve write tools are not registered, so a
+    client sees a 28-tool surface and cannot call them at all.
+    """
+    return os.environ.get(WRITES_ENV, "").strip().lower() in _TRUE
 
 
 class BackendUnsupportedError(ObsidianCLIError):
@@ -160,6 +172,12 @@ class VaultBackend(Protocol):
     def daily_read(self, vault: str | None = None) -> str: ...
     def daily_append(self, content: str, vault: str | None = None) -> str: ...
     def template_read(self, name: str, vault: str | None = None) -> str: ...
+
+    # Safety (Phase C)
+    def content_hash(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> str: ...
+    def mutation_plan(
+        self, op: str, path: str, to: str | None = None, permanent: bool = False, vault: str | None = None
+    ) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------

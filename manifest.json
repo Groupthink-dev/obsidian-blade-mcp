@@ -1,12 +1,13 @@
 {
   "name": "obsidian-blade-mcp",
-  "version": "0.9.0",
-  "description": "Obsidian vault MCP \u2014 Obsidian CLI when the app runs, direct file access when it does not",
+  "version": "1.0.0",
+  "description": "Obsidian vault MCP — Obsidian CLI when the app runs, direct file access when it does not. Read-only by default.",
   "author": "Piers",
   "license": "MIT",
   "runtime": "python",
   "entry_point": "obsidian-blade-mcp",
   "environment_variables": {
+    "OBSIDIAN_MCP_WRITES": "1 to register the 12 write tools (default: unset, read-only, 28 tools)",
     "OBSIDIAN_VAULT_PATH": "Vault directory (required for the file backend; write guard on the cli backend)",
     "OBSIDIAN_MCP_BACKEND": "auto|cli|file (default: auto; never launches Obsidian)",
     "OBSIDIAN_VAULT_NAME": "Target vault name (optional if only one vault open)",
@@ -14,7 +15,7 @@
     "OBSIDIAN_MCP_TRANSPORT": "stdio|http (default: stdio)",
     "OBSIDIAN_MCP_HOST": "127.0.0.1",
     "OBSIDIAN_MCP_PORT": "8766",
-    "OBSIDIAN_MCP_API_TOKEN": "Bearer token for HTTP auth (disabled if empty)"
+    "OBSIDIAN_MCP_API_TOKEN": "Bearer token for HTTP auth. Required for any non-loopback bind, and for writes over HTTP on any bind"
   },
   "tools": [
     "vault_info",
@@ -67,5 +68,28 @@
         "vault_bookmark_add"
       ]
     }
+  },
+  "safety": {
+    "read_only_default": true,
+    "write_tools": [
+      "vault_append",
+      "vault_bookmark_add",
+      "vault_create",
+      "vault_daily_append",
+      "vault_delete",
+      "vault_move",
+      "vault_prepend",
+      "vault_property_remove",
+      "vault_property_set",
+      "vault_rename",
+      "vault_section_replace",
+      "vault_task_update"
+    ],
+    "confirm_required": [
+      "vault_delete",
+      "vault_rename",
+      "vault_move"
+    ],
+    "hash_precondition_param": "if_hash"
   }
 }

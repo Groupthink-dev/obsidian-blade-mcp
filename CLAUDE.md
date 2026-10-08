@@ -76,7 +76,7 @@ make run           # Start the MCP server (stdio transport)
 - **Python 3.12+** — use modern syntax (PEP 604 unions, etc.)
 - **Type hints everywhere** — mypy enforced
 - **Ruff** for linting and formatting (line length 120)
-- **FastMCP 2.0** — `@mcp.tool` decorator, `Annotated[type, Field(...)]` params
+- **FastMCP 3** — `@mcp.tool` decorator, `Annotated[type, Field(...)]` params
 - **Token efficiency** — concise output default, limit= on lists, null omission
 - **SSH commit signing** via 1Password (no GPG)
 - **uv** as package manager, `uv.lock` committed
@@ -86,6 +86,13 @@ make run           # Start the MCP server (stdio transport)
 
 - CLI invocation via `subprocess.run()` — no library import
 - The blade never launches Obsidian: `auto` picks `cli` only when a live process is detected
+- Read-only by default: write tools carry `tags={WRITE_TAG}` and `apply_write_policy()` hides them unless
+  `OBSIDIAN_MCP_WRITES=1`. Tag any new mutation tool and add it to `WRITE_TOOLS`
+- Destructive tools (`delete`, `rename`, `move`) take `confirm=`; without it they return `mutation_plan()`
+- Content edits take `if_hash=`; `_precondition()` compares it to `content_hash()` and raises `ObsidianConflictError`
+- HTTP: `auth.check_http_policy()` refuses non-loopback binds without a token, and writes over HTTP without a token
+- `client._build_args` only accepts bare-word commands/keys/flags; values travel as `key=value`.
+  `tests/test_subprocess_hygiene.py` greps for the shell form
 - `tests/test_file_backend.py` exercises the file backend against a tmp vault; keep it in step
   with any CLI-shape change
 - `format=json` requested where CLI supports it

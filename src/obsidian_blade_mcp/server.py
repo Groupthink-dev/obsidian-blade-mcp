@@ -17,8 +17,8 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from mcp.types import TextContent
 from pydantic import Field
 
-from obsidian_blade_mcp.backend import VaultBackend, select_backend
-from obsidian_blade_mcp.client import ObsidianCLIError
+from obsidian_blade_mcp.backend import WRITES_ENV, VaultBackend, select_backend, writes_enabled
+from obsidian_blade_mcp.client import ObsidianCLIError, ObsidianConflictError
 from obsidian_blade_mcp.formatters import (
     format_bookmark_list,
     format_file_list,
@@ -66,9 +66,41 @@ mcp = FastMCP(
         "OBSIDIAN_VAULT_PATH; Bases queries and bookmark_add are unavailable). Every response ends with "
         "[backend: cli|file]. Use vault_files with limit= to browse, vault_read for content, vault_search to find "
         "notes. Property tools give atomic frontmatter operations. On the file backend always pass path= or file=; "
-        "there is no active note."
+        "there is no active note. The server is read-only unless it was started with OBSIDIAN_MCP_WRITES=1; "
+        "with writes on, delete/rename/move need confirm=true (without it they return a dry-run plan) and every "
+        "content edit accepts if_hash= from vault_file_info to refuse writes over a note that changed."
     ),
 )
+
+# Mutation tools carry this tag; ``apply_write_policy`` hides them unless OBSIDIAN_MCP_WRITES is set.
+WRITE_TAG = "write"
+WRITE_TOOLS = frozenset(
+    {
+        "vault_create",
+        "vault_append",
+        "vault_prepend",
+        "vault_property_set",
+        "vault_property_remove",
+        "vault_section_replace",
+        "vault_task_update",
+        "vault_bookmark_add",
+        "vault_delete",
+        "vault_rename",
+        "vault_move",
+        "vault_daily_append",
+    }
+)
+
+
+def apply_write_policy() -> bool:
+    """Register or hide the write tools from the current environment. Returns the writes state."""
+    enabled = writes_enabled()
+    if enabled:
+        mcp.enable(tags={WRITE_TAG})
+    else:
+        mcp.disable(tags={WRITE_TAG})
+    return enabled
+
 
 # Lazy-selected backend (``_get_client`` keeps its name: tests patch it)
 _client: VaultBackend | None = None
@@ -116,6 +148,36 @@ async def _run(fn: Any, *args: Any, **kwargs: Any) -> Any:
     long subprocess timeout, the transport degrades and subsequent responses fail.
     """
     return await asyncio.to_thread(fn, *args, **kwargs)
+
+
+_IF_HASH = Field(
+    description=(
+        "Optional content hash from vault_file_info (sha256:...). The write is refused with a conflict error "
+        "if the note changed since that read."
+    )
+)
+
+
+async def _precondition(client: VaultBackend, if_hash: str | None, file: str | None, path: str | None) -> None:
+    """Refuse a write when ``if_hash`` no longer matches the note (C3)."""
+    if not if_hash:
+        return
+    expected = if_hash.strip()
+    if not expected.startswith("sha256:"):
+        expected = "sha256:" + expected
+    actual: str = await _run(client.content_hash, file=file, path=path)
+    if actual != expected:
+        raise ObsidianConflictError(file or path or "note", expected, actual)
+
+
+def _format_plan(plan: dict[str, Any]) -> str:
+    """Render a dry-run plan from ``mutation_plan`` (C2)."""
+    lines = [f"Dry run: {plan.get('op')} not applied. Pass confirm=true to apply."]
+    for key, value in plan.items():
+        if key == "op":
+            continue
+        lines.append(f"{key}: {value}")
+    return "\n".join(lines)
 
 
 # ===========================================================================
@@ -172,7 +234,7 @@ async def vault_read(
 # ===========================================================================
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_create(
     name: Annotated[str, Field(description="Note name (without .md extension)")],
     content: Annotated[str | None, Field(description="Note content (Markdown). Use \\n for newlines.")] = None,
@@ -205,11 +267,12 @@ async def vault_create(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_append(
     content: Annotated[str, Field(description="Content to append (Markdown). Use \\n for newlines.")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Append content to the end of a note.
@@ -217,7 +280,9 @@ async def vault_append(
     Safe for human-written notes — adds content without modifying existing body text.
     """
     try:
-        result = await _run(_get_client().append, content=content, file=file, path=path, vault=vault)
+        client = _get_client()
+        await _precondition(client, if_hash, file, path)
+        result = await _run(client.append, content=content, file=file, path=path, vault=vault)
         target = file or path or "active note"
         result_str = str(result).strip()
         return result_str if result_str else f"Appended to: {target}"
@@ -228,11 +293,12 @@ async def vault_append(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_prepend(
     content: Annotated[str, Field(description="Content to prepend (Markdown). Use \\n for newlines.")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Prepend content to the beginning of a note (after frontmatter).
@@ -240,7 +306,9 @@ async def vault_prepend(
     Useful for adding headings or status blocks at the top of a note.
     """
     try:
-        result = await _run(_get_client().prepend, content=content, file=file, path=path, vault=vault)
+        client = _get_client()
+        await _precondition(client, if_hash, file, path)
+        result = await _run(client.prepend, content=content, file=file, path=path, vault=vault)
         target = file or path or "active note"
         result_str = str(result).strip()
         return result_str if result_str else f"Prepended to: {target}"
@@ -370,12 +438,13 @@ async def vault_property_read(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_property_set(
     name: Annotated[str, Field(description="Property name to set (e.g., 'status', 'kind')")],
     value: Annotated[str, Field(description="Property value to set")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Set a frontmatter property to a value.
@@ -384,7 +453,9 @@ async def vault_property_set(
     This is an atomic operation — safer than editing YAML frontmatter by hand.
     """
     try:
-        result = await _run(_get_client().property_set, name=name, value=value, file=file, path=path, vault=vault)
+        client = _get_client()
+        await _precondition(client, if_hash, file, path)
+        result = await _run(client.property_set, name=name, value=value, file=file, path=path, vault=vault)
         target = file or path or "active note"
         result_str = str(result).strip()
         return result_str if result_str else f"Set {name}={value} on {target}"
@@ -395,11 +466,12 @@ async def vault_property_set(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_property_remove(
     name: Annotated[str, Field(description="Property name to remove")],
     file: Annotated[str | None, Field(description="Note name (resolved like a wikilink)")] = None,
     path: Annotated[str | None, Field(description="Exact path from vault root")] = None,
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Remove a frontmatter property entirely.
@@ -407,7 +479,9 @@ async def vault_property_remove(
     Deletes the property key and value from the note's frontmatter.
     """
     try:
-        result = await _run(_get_client().property_remove, name=name, file=file, path=path, vault=vault)
+        client = _get_client()
+        await _precondition(client, if_hash, file, path)
+        result = await _run(client.property_remove, name=name, file=file, path=path, vault=vault)
         target = file or path or "active note"
         result_str = str(result).strip()
         return result_str if result_str else f"Removed {name} from {target}"
@@ -726,11 +800,12 @@ async def vault_section_read(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_section_replace(
     path: Annotated[str, Field(description="Vault-relative path (e.g., 'atlas/note.md')")],
     heading: Annotated[str, Field(description="Heading text without # prefix (e.g., 'Current Focus')")],
     content: Annotated[str, Field(description="Markdown content for the section (use \\n for newlines).")],
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Replace content under a specific heading, preserving the rest of the file.
@@ -742,7 +817,9 @@ async def vault_section_replace(
     Use ``vault_section_read`` to inspect the current section before replacing.
     """
     try:
-        result = await _run(_get_client().section_replace, path=path, heading=heading, content=content, vault=vault)
+        client = _get_client()
+        await _precondition(client, if_hash, None, path)
+        result = await _run(client.section_replace, path=path, heading=heading, content=content, vault=vault)
         return str(result)
     except ObsidianCLIError as e:
         return _error_response(e)
@@ -942,12 +1019,13 @@ async def vault_tasks(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_task_update(
     ref: Annotated[str, Field(description="Task reference in path:line format (e.g., 'notes/Todo.md:5')")],
     action: Annotated[
         str, Field(description="Action: 'toggle', 'complete', or 'uncomplete' (default: toggle)")
     ] = "toggle",
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Toggle, complete, or uncomplete a task by reference.
@@ -956,7 +1034,9 @@ async def vault_task_update(
     to check, ``action=uncomplete`` to uncheck, or ``action=toggle`` to flip.
     """
     try:
-        result = await _run(_get_client().task_update, ref=ref, action=action, vault=vault)
+        client = _get_client()
+        await _precondition(client, if_hash, None, ref.rsplit(":", 1)[0])
+        result = await _run(client.task_update, ref=ref, action=action, vault=vault)
         result_str = str(result).strip()
         return result_str if result_str else f"Task updated: {ref} ({action})"
     except ObsidianCLIError as e:
@@ -990,7 +1070,7 @@ async def vault_bookmarks(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_bookmark_add(
     path: Annotated[str | None, Field(description="File or folder path to bookmark")] = None,
     search: Annotated[str | None, Field(description="Search query to bookmark")] = None,
@@ -1019,21 +1099,31 @@ async def vault_bookmark_add(
 # ===========================================================================
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_delete(
     path: Annotated[str, Field(description="Path to the file to delete (from vault root)")],
     permanent: Annotated[
         bool, Field(description="Permanently delete instead of moving to trash (IRREVERSIBLE, default: false)")
     ] = False,
+    confirm: Annotated[
+        bool, Field(description="Apply the change. Without it the tool returns a dry-run plan.")
+    ] = False,
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
     """Delete a file from the vault.
 
-    By default, moves to the system trash (recoverable). Set ``permanent=true``
-    to permanently delete — THIS IS IRREVERSIBLE.
+    By default, moves to the trash (recoverable). Set ``permanent=true``
+    to permanently delete — THIS IS IRREVERSIBLE. Call once without ``confirm``
+    to see the exact path that would be affected, then again with ``confirm=true``.
     """
     try:
-        result = await _run(_get_client().delete_file, path=path, permanent=permanent, vault=vault)
+        client = _get_client()
+        if not confirm:
+            plan = await _run(client.mutation_plan, "delete", path=path, permanent=permanent, vault=vault)
+            return _format_plan(plan)
+        await _precondition(client, if_hash, None, path)
+        result = await _run(client.delete_file, path=path, permanent=permanent, vault=vault)
         action = "Permanently deleted" if permanent else "Deleted (moved to trash)"
         result_str = str(result).strip()
         return result_str if result_str else f"{action}: {path}"
@@ -1044,18 +1134,29 @@ async def vault_delete(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_rename(
     path: Annotated[str, Field(description="Current file path (from vault root)")],
     new_name: Annotated[str, Field(description="New filename (without folder path)")],
+    confirm: Annotated[
+        bool, Field(description="Apply the change. Without it the tool returns a dry-run plan.")
+    ] = False,
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
-    """Rename a file. Obsidian updates all wikilinks automatically.
+    """Rename a file. Links to it are rewritten on both backends.
 
     Specify the current ``path`` and the ``new_name`` (just the filename, not the full path).
+    Call once without ``confirm`` to see the exact source, destination and how many notes
+    would have links rewritten, then again with ``confirm=true``.
     """
     try:
-        result = await _run(_get_client().rename, path=path, to=new_name, vault=vault)
+        client = _get_client()
+        if not confirm:
+            plan = await _run(client.mutation_plan, "rename", path=path, to=new_name, vault=vault)
+            return _format_plan(plan)
+        await _precondition(client, if_hash, None, path)
+        result = await _run(client.rename, path=path, to=new_name, vault=vault)
         result_str = str(result).strip()
         return result_str if result_str else f"Renamed: {path} → {new_name}"
     except ObsidianCLIError as e:
@@ -1065,18 +1166,28 @@ async def vault_rename(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_move(
     path: Annotated[str, Field(description="Current file path (from vault root)")],
     destination: Annotated[str, Field(description="Destination folder path (e.g., 'spaces/Systems/')")],
+    confirm: Annotated[
+        bool, Field(description="Apply the change. Without it the tool returns a dry-run plan.")
+    ] = False,
+    if_hash: Annotated[str | None, _IF_HASH] = None,
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
 ) -> str:
-    """Move a file to a new folder. Obsidian updates all wikilinks automatically.
+    """Move a file to a new folder. Links to it are rewritten on both backends.
 
-    Specify the current ``path`` and the ``destination`` folder.
+    Specify the current ``path`` and the ``destination`` folder. Call once without
+    ``confirm`` to see the exact source and destination, then again with ``confirm=true``.
     """
     try:
-        result = await _run(_get_client().move, path=path, to=destination, vault=vault)
+        client = _get_client()
+        if not confirm:
+            plan = await _run(client.mutation_plan, "move", path=path, to=destination, vault=vault)
+            return _format_plan(plan)
+        await _precondition(client, if_hash, None, path)
+        result = await _run(client.move, path=path, to=destination, vault=vault)
         result_str = str(result).strip()
         return result_str if result_str else f"Moved: {path} → {destination}"
     except ObsidianCLIError as e:
@@ -1110,7 +1221,7 @@ async def vault_daily_read(
         return f"Error: {e}"
 
 
-@mcp.tool
+@mcp.tool(tags={WRITE_TAG})
 async def vault_daily_append(
     content: Annotated[str, Field(description="Content to append (Markdown). Use \\n for newlines.")],
     vault: Annotated[str | None, Field(description="Vault name override")] = None,
@@ -1150,12 +1261,21 @@ async def vault_template_read(
 
 def main() -> None:
     """Main entry point for the Obsidian Blade MCP server."""
+    writes = apply_write_policy()
+    logger.info("writes=%s (%s)", "enabled" if writes else "disabled, read-only", WRITES_ENV)
     if TRANSPORT == "http":
+        import sys
+
         from starlette.middleware import Middleware
 
-        from obsidian_blade_mcp.auth import BearerAuthMiddleware, get_bearer_token
+        from obsidian_blade_mcp.auth import BearerAuthMiddleware, check_http_policy, get_bearer_token
 
         bearer = get_bearer_token()
+        refusal = check_http_policy(HTTP_HOST, bearer, writes)
+        if refusal:
+            logger.error("Refusing to start HTTP transport: %s", refusal)
+            print(f"obsidian-blade-mcp: {refusal}", file=sys.stderr)
+            sys.exit(2)
         logger.info("Starting HTTP transport on %s:%s", HTTP_HOST, HTTP_PORT)
         if bearer:
             logger.info("Bearer token auth enabled (OBSIDIAN_MCP_API_TOKEN is set)")
@@ -1169,3 +1289,7 @@ def main() -> None:
         )
     else:
         mcp.run()
+
+
+# Policy at import: tools are hidden before any client lists them.
+apply_write_policy()

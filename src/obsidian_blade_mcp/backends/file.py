@@ -25,7 +25,7 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from obsidian_blade_mcp.backend import BackendUnsupportedError
-from obsidian_blade_mcp.client import ObsidianCLIError, ObsidianFileNotFoundError, ObsidianVaultError
+from obsidian_blade_mcp.client import ObsidianCLIError, ObsidianFileNotFoundError, ObsidianVaultError, content_hash_of
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +448,10 @@ class FileBackend:
             "modified": _iso(st.st_mtime),
         }
         if rel.endswith(".md"):
+            try:
+                info["hash"] = content_hash_of(self._read_text(rel))
+            except ObsidianCLIError:
+                pass
             fm = self._frontmatter(rel)
             if fm:
                 info["frontmatter"] = fm
@@ -616,7 +620,8 @@ class FileBackend:
         updated = self._rewrite_links(rel, new_rel, qualified_only=True) if rel.endswith(".md") else 0
         return f"Moved: {rel} → {new_rel}" + (f" ({updated} links updated)" if updated else "")
 
-    def _rewrite_links(self, old_rel: str, new_rel: str, qualified_only: bool = False) -> int:
+    def _rewrite_links(self, old_rel: str, new_rel: str, qualified_only: bool = False, dry_run: bool = False) -> int:
+        """Rewrite links from ``old_rel`` to ``new_rel``; with ``dry_run`` only count the notes it would touch."""
         old_stem = os.path.splitext(os.path.basename(old_rel))[0]
         new_stem = os.path.splitext(os.path.basename(new_rel))[0]
         old_q = old_rel[:-3] if old_rel.endswith(".md") else old_rel
@@ -641,9 +646,49 @@ class FileBackend:
                 continue
             new_text, n = pattern.subn(sub, text)
             if n and new_text != text:
-                self._write_text(rel, new_text)
+                if not dry_run:
+                    self._write_text(rel, new_text)
                 touched += 1
         return touched
+
+    # -------------------------------------------------------------------
+    # Safety helpers (Phase C)
+    # -------------------------------------------------------------------
+
+    def content_hash(self, file: str | None = None, path: str | None = None, vault: str | None = None) -> str:
+        """``sha256:<hex>`` over the note's bytes. Pass it back as ``if_hash`` to guard a write."""
+        return content_hash_of(self._read_text(self._target(file, path)))
+
+    def mutation_plan(
+        self, op: str, path: str, to: str | None = None, permanent: bool = False, vault: str | None = None
+    ) -> dict[str, Any]:
+        """Describe what ``delete``/``rename``/``move`` would do, with exact paths, without doing it."""
+        rel = self._target(None, path)
+        plan: dict[str, Any] = {"op": op, "source": rel}
+        if op == "delete":
+            plan["destination"] = "permanent (unrecoverable)" if permanent else f"{TRASH_DIR}/{os.path.basename(rel)}"
+            return plan
+        if op == "rename":
+            new_name = (to or "").replace("\\", "/").strip().strip("/")
+            if "/" in new_name:
+                raise ObsidianCLIError("rename takes a file name, not a path; use move for folders")
+            _, ext = os.path.splitext(rel)
+            if not new_name.endswith(ext):
+                new_name += ext
+            folder = os.path.dirname(rel)
+            new_rel = f"{folder}/{new_name}" if folder else new_name
+            qualified_only = False
+        elif op == "move":
+            dest_folder = (to or "").replace("\\", "/").strip().strip("/")
+            new_rel = f"{dest_folder}/{os.path.basename(rel)}" if dest_folder else os.path.basename(rel)
+            qualified_only = True
+        else:
+            raise ObsidianCLIError(f"Unknown mutation: {op}")
+        plan["destination"] = new_rel
+        plan["target_exists"] = os.path.exists(self._abs(new_rel))
+        if rel.endswith(".md"):
+            plan["notes_with_links_to_rewrite"] = self._rewrite_links(rel, new_rel, qualified_only, dry_run=True)
+        return plan
 
     # -------------------------------------------------------------------
     # F3 properties

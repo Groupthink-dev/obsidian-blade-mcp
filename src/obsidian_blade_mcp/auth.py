@@ -21,6 +21,36 @@ logger = logging.getLogger(__name__)
 _BEARER_TOKEN: str | None = None
 _BEARER_CHECKED: bool = False
 
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "[::1]"})
+
+
+def is_loopback(host: str) -> bool:
+    """True for binds that only this machine can reach."""
+    return host.strip().lower() in LOOPBACK_HOSTS
+
+
+def check_http_policy(host: str, token: str | None, writes: bool) -> str | None:
+    """Return a refusal reason for this HTTP bind, or None when it is allowed.
+
+    Rules (DD-462 Phase C, step C4):
+
+    * loopback bind, read-only, no token: allowed;
+    * any non-loopback bind requires ``OBSIDIAN_MCP_API_TOKEN``;
+    * writes enabled over HTTP require the token on every bind, loopback included.
+    """
+    if token:
+        return None
+    if not is_loopback(host):
+        return (
+            f"HTTP bind on {host} is not loopback and OBSIDIAN_MCP_API_TOKEN is unset. Set a token, or bind 127.0.0.1."
+        )
+    if writes:
+        return (
+            "OBSIDIAN_MCP_WRITES is enabled over HTTP and OBSIDIAN_MCP_API_TOKEN is unset. "
+            "Writes over HTTP always need a token, even on loopback."
+        )
+    return None
+
 
 def get_bearer_token() -> str | None:
     """Return the bearer token from env, or None if not configured."""

@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync test test-unit test-e2e test-cov lint format format-check type-check check check-linux clean run server pre-commit-install pre-commit-run
+.PHONY: help install install-dev sync test test-unit test-e2e test-cov lint format format-check type-check check check-linux build publish clean run server pre-commit-install pre-commit-run
 
 help:
 	@echo "Available targets:"
@@ -15,6 +15,8 @@ help:
 	@echo "  make type-check       - Run mypy type checker"
 	@echo "  make check            - Run all quality checks (lint + format + type-check)"
 	@echo "  make check-linux      - Run the Woodpecker lane in podman (Linux, no Obsidian)"
+	@echo "  make build            - Build sdist and wheel into dist/"
+	@echo "  make publish          - Upload dist/ to PyPI (needs UV_PUBLISH_TOKEN)"
 	@echo "  make clean            - Clean build artifacts and cache"
 	@echo "  make run              - Run the MCP server"
 	@echo "  make server           - Alias for 'run'"
@@ -73,6 +75,20 @@ check-linux:
 	  uv run ruff format --check src/ tests/; \
 	  uv run mypy src/obsidian_blade_mcp; \
 	  uv run pytest tests/ -m "not e2e" -q'
+
+# Release. The canonical remote is Forgejo, which PyPI trusted publishing does not
+# support, so 1.0.0 is published from a workstation with a project-scoped token.
+# .github/workflows/publish.yml takes over once the GitHub mirror exists (v1.1.0).
+build:
+	rm -rf dist
+	uv build
+	uv run --with twine twine check dist/*
+
+publish: build
+	@test -n "$$UV_PUBLISH_TOKEN" || (echo "UV_PUBLISH_TOKEN is unset" && exit 1)
+	@grep -q "^version = \"$$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//')\"" pyproject.toml || \
+	  (echo "HEAD is not at a tag matching pyproject.toml version" && exit 1)
+	uv publish
 
 # Pre-commit
 pre-commit-install:
