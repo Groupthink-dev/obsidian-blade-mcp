@@ -1,24 +1,32 @@
 # Obsidian Blade MCP
 
-Precision vault tools via the Obsidian CLI. Each MCP tool is a "blade" — the sharpest instrument for its vault operation.
+Precision vault tools for any MCP client. Each tool is a "blade" — the sharpest instrument for its vault operation.
 
-Wraps the [Obsidian CLI](https://obsidian.md) (v1.12+) as an MCP server using [FastMCP 2.0](https://github.com/jlowin/fastmcp). The CLI communicates with the running Obsidian desktop app via IPC — Obsidian must be open.
+Two backends behind one 40-tool surface, built on [FastMCP](https://github.com/jlowin/fastmcp):
+
+| Backend | When | What you get |
+|---|---|---|
+| **cli** | Obsidian desktop is running with the [CLI](https://obsidian.md/help/cli) enabled (v1.12+) | Obsidian's own index: search, Bases, tasks, link graph, templates, daily notes |
+| **file** | Obsidian is closed, or the host has no Obsidian at all (a Linux server, a CI box) | Direct vault access from `OBSIDIAN_VAULT_PATH`: everything except Bases queries and bookmark creation |
+
+The backend is selected once per process and the blade **never launches Obsidian**. Every response ends with `[backend: cli]` or `[backend: file]`.
 
 ## Features
 
-- **13 Phase 1 tools**: read, write, append, prepend, files, folders, recents, properties
+- **40 tools**: read, write, search, properties, sections, link graph, tags, tasks, bookmarks, Bases, daily notes, templates
+- **Works without the app**: the file backend parses Markdown, YAML frontmatter, wikilinks, `#tags` and `- [ ]` tasks deterministically. No embeddings, no inference, no network.
 - **Token-efficient**: concise output, capped lists, null-field omission
-- **Atomic property operations**: set/remove frontmatter without parsing YAML
+- **Atomic property operations**: set/remove frontmatter without hand-editing YAML
+- **Safe writes on the file backend**: atomic temp-and-rename, trash instead of delete, path containment (no `..`, no symlink escapes, no `.obsidian/` writes)
 - **Multi-vault**: target vaults via env var or per-tool override
 - **HTTP transport**: bearer token auth for remote access via tunnels
 - **SKILL.md**: self-teaching instructions for Claude
 
 ## Requirements
 
-- macOS (tested) or Linux
-- [Obsidian](https://obsidian.md) v1.12+ with CLI enabled (Settings → General)
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/)
+- For the `cli` backend: [Obsidian](https://obsidian.md) v1.12+ with CLI enabled (Settings → General), on macOS or Linux
+- For the `file` backend: a vault directory. On a server, [Obsidian Headless](https://obsidian.md/help/headless) (`ob sync --continuous`) keeps it current if you use Obsidian Sync.
 
 ## Quick Start
 
@@ -47,23 +55,29 @@ claude mcp add obsidian-blade -- uv run --directory ~/code/obsidian-blade-mcp ob
 }
 ```
 
-## Tools (Phase 1)
+## Tools
 
-| Tool | Description |
-|------|-------------|
-| `vault_info` | Vault metadata (name, path, counts) |
-| `vault_read` | Read note content |
-| `vault_create` | Create a new note |
-| `vault_append` | Append to a note |
-| `vault_prepend` | Prepend to a note (after frontmatter) |
-| `vault_files` | List files (with limit) |
-| `vault_file_info` | File metadata |
-| `vault_folders` | List all folders |
-| `vault_recents` | Recently modified files |
-| `vault_property_read` | Read a frontmatter property |
-| `vault_property_set` | Set a frontmatter property |
-| `vault_property_remove` | Remove a frontmatter property |
-| `vault_properties` | List all properties |
+| Family | Tools | file backend |
+|---|---|---|
+| Discovery | `vault_info` `vault_files` `vault_file_info` `vault_folders` `vault_recents` | yes |
+| Content | `vault_read` `vault_create` `vault_append` `vault_prepend` `vault_outline` `vault_section_read` `vault_section_replace` `vault_delete` `vault_rename` `vault_move` | yes |
+| Properties | `vault_property_read` `vault_property_set` `vault_property_remove` `vault_properties` `vault_query_properties` | yes |
+| Search | `vault_search` `vault_search_context` | yes (literal, bounded) |
+| Graph and tags | `vault_links` `vault_backlinks` `vault_aliases` `vault_unresolved` `vault_orphans` `vault_deadends` `vault_tags` `vault_tag` | yes |
+| Bases | `vault_bases` `vault_base_views` `vault_base_query` | listing only |
+| Tasks and bookmarks | `vault_tasks` `vault_task_update` `vault_bookmarks` `vault_bookmark_add` | all but `bookmark_add` |
+| Daily and templates | `vault_daily_read` `vault_daily_append` `vault_template_read` | yes |
+
+Unsupported operations return `Error: backend_unsupported: ...` naming the backend that can serve them.
+
+## Headless server recipe
+
+```bash
+npm install -g obsidian-headless && ob login && ob sync-setup --vault "My Vault" --path ~/vault
+ob sync --continuous &          # optional: keep the vault fresh via Obsidian Sync
+export OBSIDIAN_VAULT_PATH=~/vault
+uvx obsidian-blade-mcp          # file backend, stdio
+```
 
 ## HTTP Transport
 
@@ -81,7 +95,9 @@ uv run obsidian-blade-mcp
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OBSIDIAN_VAULT_NAME` | (none) | Default vault to target |
+| `OBSIDIAN_VAULT_PATH` | (none) | Vault directory. Required for the file backend; on the cli backend, writes refuse if the CLI's vault differs |
+| `OBSIDIAN_MCP_BACKEND` | `auto` | `auto` (cli if Obsidian is running, else file), `cli`, or `file` |
+| `OBSIDIAN_VAULT_NAME` | (none) | Default vault to target (cli backend) |
 | `OBSIDIAN_CLI_PATH` | auto-detect | Path to obsidian binary |
 | `OBSIDIAN_MCP_TRANSPORT` | `stdio` | Transport: `stdio` or `http` |
 | `OBSIDIAN_MCP_HOST` | `127.0.0.1` | HTTP bind host |

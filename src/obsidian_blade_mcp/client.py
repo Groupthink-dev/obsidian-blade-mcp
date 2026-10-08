@@ -87,7 +87,7 @@ def _classify_error(stderr: str, returncode: int) -> ObsidianCLIError:
 
 
 class ObsidianCLI:
-    """Subprocess wrapper for the Obsidian CLI.
+    """Subprocess wrapper for the Obsidian CLI. This is the ``cli`` backend.
 
     Args:
         vault_name: Default vault to target. Overridden by per-call ``vault`` param.
@@ -106,6 +106,45 @@ class ObsidianCLI:
         self.cli_path = cli_path or os.environ.get("OBSIDIAN_CLI_PATH") or self._find_cli()
         self.timeout = timeout
         self._env = self._build_subprocess_env()
+        self._vault_match_checked = False
+
+    name = "cli"
+
+    def _fs(self, vault: str | None = None) -> Any:
+        """File backend over the resolved vault path, for operations that never need the app."""
+        from obsidian_blade_mcp.backends.file import FileBackend
+
+        return FileBackend(self._resolve_vault_path(vault))
+
+    def _assert_vault_match(self, vault: str | None = None) -> None:
+        """Before a mutation, confirm the CLI's vault is the configured ``OBSIDIAN_VAULT_PATH``.
+
+        Guards the multi-vault case where the CLI's active vault is not the one
+        the operator configured. Checked once per process. No-op when the env
+        var is unset.
+        """
+        if self._vault_match_checked:
+            return
+        configured = os.environ.get("OBSIDIAN_VAULT_PATH", "").strip()
+        if not configured:
+            self._vault_match_checked = True
+            return
+        info = self.vault_info(vault=vault)
+        cli_path: str | None = None
+        if isinstance(info, dict):
+            cli_path = info.get("path")
+        elif isinstance(info, str):
+            for line in info.splitlines():
+                parts = line.split("\t", 1)
+                if len(parts) == 2 and parts[0] == "path":
+                    cli_path = parts[1]
+        if cli_path and os.path.realpath(cli_path) != os.path.realpath(configured):
+            raise ObsidianVaultError(
+                f"Vault mismatch: CLI vault is {cli_path} but OBSIDIAN_VAULT_PATH is {configured}. "
+                "Refusing to write. Set OBSIDIAN_VAULT_NAME or fix OBSIDIAN_VAULT_PATH.",
+                returncode=1,
+            )
+        self._vault_match_checked = True
 
     @staticmethod
     def _build_subprocess_env() -> dict[str, str]:
@@ -356,6 +395,7 @@ class ObsidianCLI:
         silent: bool = True,
     ) -> str:
         """Create a new note."""
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"name": name}
         if content is not None:
             params["content"] = content
@@ -372,6 +412,7 @@ class ObsidianCLI:
 
     def append(self, content: str, file: str | None = None, path: str | None = None, vault: str | None = None) -> str:
         """Append content to a note."""
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"content": content}
         if file:
             params["file"] = file
@@ -381,6 +422,7 @@ class ObsidianCLI:
 
     def prepend(self, content: str, file: str | None = None, path: str | None = None, vault: str | None = None) -> str:
         """Prepend content to a note."""
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"content": content}
         if file:
             params["file"] = file
@@ -451,6 +493,7 @@ class ObsidianCLI:
         vault: str | None = None,
     ) -> str:
         """Set a frontmatter property."""
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"name": name, "value": value}
         if file:
             params["file"] = file
@@ -462,6 +505,7 @@ class ObsidianCLI:
         self, name: str, file: str | None = None, path: str | None = None, vault: str | None = None
     ) -> str:
         """Remove a frontmatter property."""
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"name": name}
         if file:
             params["file"] = file
@@ -745,6 +789,7 @@ class ObsidianCLI:
             ref: Task reference in ``path:line`` format.
             action: One of ``toggle``, ``complete``, ``uncomplete``.
         """
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"ref": ref}
         flags = [action]
         return self.run("task", params, vault, flags)
@@ -789,6 +834,7 @@ class ObsidianCLI:
             path: Path to the file to delete.
             permanent: If True, permanently delete. Otherwise move to trash.
         """
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"path": path}
         flags = ["permanent"] if permanent else []
         return self.run("delete", params, vault, flags)
@@ -800,7 +846,8 @@ class ObsidianCLI:
             path: Current file path.
             to: New name (not full path — just the new filename).
         """
-        params: dict[str, Any] = {"path": path, "to": to}
+        self._assert_vault_match(vault)
+        params: dict[str, Any] = {"path": path, "name": to}
         return self.run("rename", params, vault)
 
     def move(self, path: str, to: str, vault: str | None = None) -> str:
@@ -810,139 +857,45 @@ class ObsidianCLI:
             path: Current file path.
             to: Destination folder path.
         """
+        self._assert_vault_match(vault)
         params: dict[str, Any] = {"path": path, "to": to}
         return self.run("move", params, vault)
 
     # -------------------------------------------------------------------
-    # Section operations (direct filesystem — no CLI dependency)
+    # Daily notes and templates
+    # -------------------------------------------------------------------
+
+    def daily_read(self, vault: str | None = None) -> str:
+        """Read today's daily note (Daily notes core plugin must be enabled)."""
+        return self.run("daily:read", vault=vault)
+
+    def daily_append(self, content: str, vault: str | None = None) -> str:
+        """Append to today's daily note, creating it if needed."""
+        self._assert_vault_match(vault)
+        return self.run("daily:append", {"content": content}, vault)
+
+    def template_read(self, name: str, vault: str | None = None) -> str:
+        """Read a template's raw content (Templates core plugin must be enabled)."""
+        return self.run("template:read", {"name": name}, vault)
+
+    # -------------------------------------------------------------------
+    # Section operations (served by the file backend over the resolved vault)
     # -------------------------------------------------------------------
 
     @staticmethod
     def _parse_heading(line: str) -> tuple[int, str] | None:
-        """If line is a Markdown heading, return (level, text). Else None.
+        """If line is a Markdown heading, return (level, text). Else None."""
+        from obsidian_blade_mcp.backends.file import parse_heading
 
-        Recognises ATX headings only (``# Title``, ``## Title``, etc.).
-        Returns ``None`` for fenced code, blank lines, and non-heading lines.
-        """
-        stripped = line.rstrip("\r\n")
-        if not stripped.startswith("#"):
-            return None
-        i = 0
-        while i < len(stripped) and stripped[i] == "#":
-            i += 1
-        # Must have a space after the hashes (ATX heading spec)
-        if i == 0 or i >= len(stripped) or stripped[i] != " ":
-            return None
-        return i, stripped[i + 1 :].strip()
+        return parse_heading(line)
 
     def section_read(self, path: str, heading: str, vault: str | None = None) -> str:
-        """Return content under a specific heading.
-
-        Scans the file for the first heading whose text matches ``heading``
-        (case-sensitive, exact match, no ``#`` prefix). Returns all lines
-        from that heading until the next heading of the same or higher level
-        (or EOF). The heading line itself is not included.
-
-        Args:
-            path: Vault-relative file path (e.g. ``atlas/note.md``).
-            heading: Heading text without ``#`` marks (e.g. ``Current Focus``).
-            vault: Vault name override.
-
-        Returns:
-            Section body as a string (trailing whitespace stripped).
-
-        Raises:
-            ObsidianFileNotFoundError: If the file does not exist.
-            ObsidianCLIError: If the heading is not found.
-        """
-        vault_path = self._resolve_vault_path(vault)
-        full_path = os.path.join(vault_path, path)
-        if not os.path.isfile(full_path):
-            raise ObsidianFileNotFoundError(f"File not found: {path}")
-
-        with open(full_path, encoding="utf-8") as f:
-            lines = f.readlines()
-
-        heading_idx: int | None = None
-        heading_level: int = 0
-        for i, line in enumerate(lines):
-            parsed = self._parse_heading(line)
-            if parsed is not None and parsed[1] == heading:
-                heading_idx = i
-                heading_level = parsed[0]
-                break
-
-        if heading_idx is None:
-            raise ObsidianCLIError(f"Heading '{heading}' not found in {path}")
-
-        # Collect lines until next heading of same or higher level (lower number = higher)
-        section_lines: list[str] = []
-        for line in lines[heading_idx + 1 :]:
-            parsed = self._parse_heading(line)
-            if parsed is not None and parsed[0] <= heading_level:
-                break
-            section_lines.append(line)
-
-        return "".join(section_lines).rstrip("\n")
+        """Return content under a specific heading. Direct filesystem; app not required."""
+        return str(self._fs(vault).section_read(path, heading))
 
     def section_replace(self, path: str, heading: str, content: str, vault: str | None = None) -> str:
-        """Replace content under a specific heading, preserving the rest of the file.
-
-        Finds the first heading matching ``heading`` (case-sensitive exact match),
-        removes the existing section body, and inserts ``content`` in its place.
-        The heading line and all content outside the section are preserved intact.
-
-        Args:
-            path: Vault-relative file path (e.g. ``atlas/note.md``).
-            heading: Heading text without ``#`` marks (e.g. ``Current Focus``).
-            content: New body content to place under the heading (Markdown).
-                The caller is responsible for including appropriate blank lines.
-            vault: Vault name override.
-
-        Returns:
-            Confirmation string.
-
-        Raises:
-            ObsidianFileNotFoundError: If the file does not exist.
-            ObsidianCLIError: If the heading is not found.
-        """
-        vault_path = self._resolve_vault_path(vault)
-        full_path = os.path.join(vault_path, path)
-        if not os.path.isfile(full_path):
-            raise ObsidianFileNotFoundError(f"File not found: {path}")
-
-        with open(full_path, encoding="utf-8") as f:
-            lines = f.readlines()
-
-        heading_idx: int | None = None
-        heading_level: int = 0
-        for i, line in enumerate(lines):
-            parsed = self._parse_heading(line)
-            if parsed is not None and parsed[1] == heading:
-                heading_idx = i
-                heading_level = parsed[0]
-                break
-
-        if heading_idx is None:
-            raise ObsidianCLIError(f"Heading '{heading}' not found in {path}")
-
-        # Find end of section (next heading of same or higher level, or EOF)
-        end_idx = len(lines)
-        for i, line in enumerate(lines[heading_idx + 1 :], start=heading_idx + 1):
-            parsed = self._parse_heading(line)
-            if parsed is not None and parsed[0] <= heading_level:
-                end_idx = i
-                break
-
-        # Ensure content ends with exactly one newline so the next heading starts cleanly
-        if content and not content.endswith("\n"):
-            content += "\n"
-
-        new_lines = lines[: heading_idx + 1] + ([content] if content else []) + lines[end_idx:]
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.writelines(new_lines)
-
-        return f"Section '{heading}' replaced in {path}"
+        """Replace content under a specific heading. Direct filesystem; app not required."""
+        return str(self._fs(vault).section_replace(path, heading, content))
 
     # -------------------------------------------------------------------
     # Direct filesystem operations (no CLI dependency)
@@ -987,42 +940,16 @@ class ObsidianCLI:
 
     @staticmethod
     def _parse_frontmatter(file_path: str) -> dict[str, Any] | None:
-        """Parse YAML frontmatter from a markdown file without reading the body.
+        """Parse YAML frontmatter from a markdown file. Returns None when absent or invalid."""
+        from obsidian_blade_mcp.backends.file import parse_frontmatter_text, split_frontmatter
 
-        Returns the frontmatter dict, or None if no valid frontmatter found.
-        Uses a custom YAML loader that preserves string values like ``on``,
-        ``off``, ``yes``, ``no`` (which standard YAML parses as booleans).
-        """
         try:
             with open(file_path, encoding="utf-8") as f:
-                first_line = f.readline().rstrip("\n")
-                if first_line != "---":
-                    return None
-                yaml_lines: list[str] = []
-                for line in f:
-                    stripped = line.rstrip("\n")
-                    if stripped == "---":
-                        break
-                    yaml_lines.append(line)
-                else:
-                    # EOF without closing ---
-                    return None
-            import yaml  # type: ignore[import-untyped]
-
-            # Custom loader that treats YAML 1.1 booleans (on/off/yes/no) as strings.
-            # Obsidian frontmatter uses "status: on" as a string, not boolean.
-            class _StringBoolLoader(yaml.SafeLoader):
-                pass
-
-            _StringBoolLoader.add_constructor(
-                "tag:yaml.org,2002:bool",
-                lambda loader, node: loader.construct_scalar(node),
-            )
-
-            result: dict[str, Any] | None = yaml.load("".join(yaml_lines), Loader=_StringBoolLoader)
-            return result
-        except Exception:
+                text = f.read()
+        except OSError:
             return None
+        yaml_block, _ = split_frontmatter(text)
+        return parse_frontmatter_text(yaml_block)
 
     def query_properties(
         self,
@@ -1033,69 +960,8 @@ class ObsidianCLI:
         limit: int = 50,
         vault: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Query notes by frontmatter property value, returning only metadata.
-
-        Walks the vault filesystem, parsing only YAML frontmatter (never reads
-        note bodies). Filters where the specified property contains the value
-        (case-insensitive substring match).
-
-        Args:
-            property: Frontmatter property name to match (e.g. "status").
-            value: Substring to match against the property value (case-insensitive).
-            path: Restrict to a folder path relative to vault root (e.g. "spaces/").
-            fields: Comma-separated list of frontmatter fields to return.
-                If None, returns all frontmatter fields.
-            limit: Maximum results to return (default 50).
-            vault: Vault name override.
-
-        Returns:
-            List of dicts with ``file`` (relative path) and ``properties`` (dict).
-        """
-        vault_path = self._resolve_vault_path(vault)
-        search_root = os.path.join(vault_path, path) if path else vault_path
-
-        if not os.path.isdir(search_root):
-            return []
-
-        field_list: list[str] | None = None
-        if fields:
-            field_list = [f.strip() for f in fields.split(",")]
-
-        value_lower = value.lower()
-        results: list[dict[str, Any]] = []
-
-        for dirpath, _dirnames, filenames in os.walk(search_root):
-            for filename in filenames:
-                if not filename.endswith(".md"):
-                    continue
-                full_path = os.path.join(dirpath, filename)
-                fm = self._parse_frontmatter(full_path)
-                if fm is None:
-                    continue
-
-                prop_value = fm.get(property)
-                if prop_value is None:
-                    continue
-
-                # Case-insensitive substring match
-                if value_lower not in str(prop_value).lower():
-                    continue
-
-                # Filter fields
-                if field_list:
-                    filtered = {k: v for k, v in fm.items() if k in field_list}
-                else:
-                    filtered = fm
-
-                rel_path = os.path.relpath(full_path, vault_path)
-                results.append({"file": rel_path, "properties": filtered})
-
-                if len(results) >= limit:
-                    break
-            if len(results) >= limit:
-                break
-
-        # Sort by rank descending if rank field exists in results
-        results.sort(key=lambda r: r["properties"].get("rank", 0) or 0, reverse=True)
-
-        return results
+        """Query notes by frontmatter property value. Direct filesystem; app not required."""
+        result: list[dict[str, Any]] = self._fs(vault).query_properties(
+            property=property, value=value, path=path, fields=fields, limit=limit
+        )
+        return result

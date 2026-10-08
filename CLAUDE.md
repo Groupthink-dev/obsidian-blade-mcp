@@ -22,9 +22,11 @@ state or invent paths.
 
 ## Project overview
 
-MCP server wrapping the Obsidian CLI (v1.12+) as subprocess calls. Each tool is a
-precision "blade" for vault operations — read, write, search, properties, structure.
-The CLI communicates with the running Obsidian desktop app via IPC.
+MCP server with two backends behind one tool surface. The `cli` backend wraps the
+Obsidian CLI (v1.12+) as subprocess calls and needs the desktop app running. The
+`file` backend reads and writes the vault directory directly and needs nothing.
+Each tool is a precision "blade" for vault operations — read, write, search,
+properties, structure, tasks, daily notes.
 
 ## Project structure
 
@@ -32,15 +34,19 @@ The CLI communicates with the running Obsidian desktop app via IPC.
 src/obsidian_blade_mcp/
 ├── __init__.py       — Version
 ├── __main__.py       — python -m entry
-├── server.py         — FastMCP server + @mcp.tool decorators
-├── client.py         — ObsidianCLI subprocess wrapper with typed exceptions
+├── server.py         — FastMCP server + @mcp.tool decorators + backend-tag middleware
+├── backend.py        — VaultBackend protocol, running-app probe, select_backend()
+├── backends/file.py  — FileBackend: direct vault access (frontmatter, links, tags, tasks)
+├── client.py         — ObsidianCLI: the cli backend, subprocess wrapper with typed exceptions
 ├── formatters.py     — Token-efficient output formatters
 ├── models.py         — Constants
 └── auth.py           — Bearer token auth (HTTP transport)
 ```
 
-- `server.py` defines MCP tools and delegates to `client.py` methods
-- `client.py` does subprocess.run() to the Obsidian CLI binary
+- `server.py` defines MCP tools and delegates to whichever backend `select_backend()` chose
+- `client.py` does subprocess.run() to the Obsidian CLI binary; its section and query_properties
+  methods delegate to `FileBackend` over the resolved vault path
+- `backends/file.py` must mirror the CLI's response shapes so formatters stay backend-agnostic
 - All tools return strings (MCP convention) — formatters handle presentation
 - Errors are caught and returned as `Error: ...` strings, not raised
 
@@ -78,7 +84,9 @@ make run           # Start the MCP server (stdio transport)
 ## Architecture notes
 
 - CLI invocation via `subprocess.run()` — no library import
-- Obsidian desktop must be running (CLI is IPC bridge to the app)
+- The blade never launches Obsidian: `auto` picks `cli` only when a live process is detected
+- `tests/test_file_backend.py` exercises the file backend against a tmp vault; keep it in step
+  with any CLI-shape change
 - `format=json` requested where CLI supports it
 - Multi-vault via `OBSIDIAN_VAULT_NAME` env var + per-tool `vault=` override
 - Typed exception hierarchy maps CLI error patterns to Python exceptions

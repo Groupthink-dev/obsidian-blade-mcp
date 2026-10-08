@@ -1,19 +1,20 @@
 {
   "name": "obsidian-blade-mcp",
-  "version": "0.8.0",
-  "description": "Obsidian CLI MCP Server \u2014 precision vault tools via subprocess",
+  "version": "0.9.0",
+  "description": "Obsidian vault MCP \u2014 Obsidian CLI when the app runs, direct file access when it does not",
   "author": "Piers",
   "license": "MIT",
   "runtime": "python",
   "entry_point": "obsidian-blade-mcp",
   "environment_variables": {
+    "OBSIDIAN_VAULT_PATH": "Vault directory (required for the file backend; write guard on the cli backend)",
+    "OBSIDIAN_MCP_BACKEND": "auto|cli|file (default: auto; never launches Obsidian)",
     "OBSIDIAN_VAULT_NAME": "Target vault name (optional if only one vault open)",
     "OBSIDIAN_CLI_PATH": "Path to obsidian binary (auto-detected if empty)",
     "OBSIDIAN_MCP_TRANSPORT": "stdio|http (default: stdio)",
     "OBSIDIAN_MCP_HOST": "127.0.0.1",
     "OBSIDIAN_MCP_PORT": "8766",
-    "OBSIDIAN_MCP_API_TOKEN": "Bearer token for HTTP auth (disabled if empty)",
-    "OBSIDIAN_VAULT_PATH": "Vault root path (required for the filesystem tools when Obsidian is not running)"
+    "OBSIDIAN_MCP_API_TOKEN": "Bearer token for HTTP auth (disabled if empty)"
   },
   "tools": [
     "vault_info",
@@ -52,6 +53,19 @@
     "vault_bookmark_add",
     "vault_delete",
     "vault_rename",
-    "vault_move"
-  ]
+    "vault_move",
+    "vault_daily_read",
+    "vault_daily_append",
+    "vault_template_read"
+  ],
+  "backends": {
+    "cli": "all tools",
+    "file": {
+      "unsupported": [
+        "vault_base_views",
+        "vault_base_query",
+        "vault_bookmark_add"
+      ]
+    }
+  }
 }

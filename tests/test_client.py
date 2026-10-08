@@ -492,7 +492,7 @@ class TestPhase4Methods:
         call_args = mock_subprocess.call_args[0][0]
         assert "rename" in call_args
         assert "path=notes/Old Name.md" in call_args
-        assert "to=New Name" in call_args
+        assert "name=New Name" in call_args
 
     def test_rename_args(self, cli, mock_subprocess, successful_result):
         mock_subprocess.return_value = successful_result("")

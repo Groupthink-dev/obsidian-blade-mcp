@@ -1,7 +1,7 @@
 ---
 name: obsidian-blade
-description: Obsidian vault operations via CLI — read, write, search, properties, structure, tasks, bookmarks, file ops, section ops
-version: 0.7.0
+description: Obsidian vault operations — read, write, search, properties, structure, tasks, bookmarks, daily notes, templates. Works with Obsidian running (CLI backend) or closed (file backend).
+version: 0.9.0
 permissions:
   read:
     - vault_info
@@ -30,6 +30,8 @@ permissions:
     - vault_tasks
     - vault_bookmarks
     - vault_section_read
+    - vault_daily_read
+    - vault_template_read
   write:
     - vault_create
     - vault_append
@@ -38,6 +40,7 @@ permissions:
     - vault_property_remove
     - vault_task_update
     - vault_bookmark_add
+    - vault_daily_append
     - vault_delete
     - vault_rename
     - vault_move
@@ -45,6 +48,15 @@ permissions:
 ---
 
 # Obsidian Blade MCP — Skill Guide
+
+## Backends
+
+Every response ends with `[backend: cli]` or `[backend: file]`.
+
+- **cli** — Obsidian desktop is running and the CLI is enabled. Uses Obsidian's own index: search, Bases, tasks, link graph, templates. Obsidian updates wikilinks on rename/move.
+- **file** — Obsidian is closed or not installed. Reads and writes the vault directory at `OBSIDIAN_VAULT_PATH` directly. Deterministic parsing only. Not available: `vault_base_views`, `vault_base_query`, `vault_bookmark_add` (they return `Error: backend_unsupported`). There is no active note: always pass `file=` or `path=`.
+
+The backend is chosen once per process (`OBSIDIAN_MCP_BACKEND=auto|cli|file`, default `auto`). The blade never launches Obsidian.
 
 ## Token Efficiency Rules (MANDATORY)
 
@@ -129,8 +141,13 @@ vault_search query="Docker" limit=10   → Find notes by content
 
 ### File Operations
 - **vault_delete** — Delete a file. Moves to trash by default. Use `permanent=true` to permanently delete (IRREVERSIBLE).
-- **vault_rename** — Rename a file. Obsidian updates all wikilinks automatically.
-- **vault_move** — Move a file to a new folder. Obsidian updates all wikilinks automatically.
+- **vault_rename** — Rename a file. Wikilinks are updated (by Obsidian on `cli`, by the blade on `file`).
+- **vault_move** — Move a file to a new folder. Bare `[[name]]` links keep resolving; path-qualified links are rewritten.
+
+### Daily Notes & Templates
+- **vault_daily_read** — Today's daily note (path from the Daily notes plugin settings).
+- **vault_daily_append** — Append to today's daily note; creates it from the configured template if missing.
+- **vault_template_read** — Raw content of a template from the Templates folder.
 
 ### Properties (Atomic Frontmatter)
 - **vault_property_read** — Read one property value.
@@ -226,7 +243,5 @@ vault_search query="Docker" limit=10   → Find notes by content
 
 ## Prerequisites
 
-- **Obsidian v1.12+** must be installed and running (for CLI-based tools)
-- **CLI enabled** at Settings → General
-- Vault must be open in Obsidian
-- **Exception:** `vault_query_properties`, `vault_section_read`, `vault_section_replace` operate directly on the filesystem — Obsidian does **not** need to be running. Requires `OBSIDIAN_VAULT_PATH` env var set, or Obsidian running to resolve the path.
+- **cli backend:** Obsidian v1.12+ installed and running, CLI enabled at Settings → General, vault open.
+- **file backend:** `OBSIDIAN_VAULT_PATH` set to the vault directory. No Obsidian needed. On a server, keep the vault fresh with Obsidian Headless (`ob sync --continuous`) or any other sync.

@@ -1,7 +1,8 @@
-"""Obsidian Blade MCP Server — precision vault tools via subprocess.
+"""Obsidian Blade MCP Server — precision vault tools.
 
-Wraps the Obsidian CLI (v1.12+) as MCP tools. Token-efficient by default:
-concise output, capped lists, null-field omission.
+Two backends behind one tool surface (see ``backend.py``): the Obsidian CLI
+when the desktop app is running, direct file access when it is not.
+Token-efficient by default: concise output, capped lists, null-field omission.
 """
 
 from __future__ import annotations
@@ -12,9 +13,12 @@ import os
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from mcp.types import TextContent
 from pydantic import Field
 
-from obsidian_blade_mcp.client import ObsidianCLI, ObsidianCLIError
+from obsidian_blade_mcp.backend import VaultBackend, select_backend
+from obsidian_blade_mcp.client import ObsidianCLIError
 from obsidian_blade_mcp.formatters import (
     format_bookmark_list,
     format_file_list,
@@ -57,24 +61,47 @@ HTTP_PORT = int(os.environ.get("OBSIDIAN_MCP_PORT", "8766"))
 mcp = FastMCP(
     "ObsidianBlade",
     instructions=(
-        "Obsidian vault operations via CLI. All tools target the vault set by OBSIDIAN_VAULT_NAME "
-        "or the per-tool vault= parameter. Use vault_files with limit= to browse, vault_read for content, "
-        "vault_search for finding notes. Property tools provide atomic frontmatter operations. "
-        "Obsidian desktop must be running."
+        "Obsidian vault operations. Two backends: 'cli' when Obsidian desktop is running (uses Obsidian's own "
+        "index: search, Bases, tasks, link graph) and 'file' when it is not (direct vault access from "
+        "OBSIDIAN_VAULT_PATH; Bases queries and bookmark_add are unavailable). Every response ends with "
+        "[backend: cli|file]. Use vault_files with limit= to browse, vault_read for content, vault_search to find "
+        "notes. Property tools give atomic frontmatter operations. On the file backend always pass path= or file=; "
+        "there is no active note."
     ),
 )
 
-# Lazy-initialized client
-_client: ObsidianCLI | None = None
+# Lazy-selected backend (``_get_client`` keeps its name: tests patch it)
+_client: VaultBackend | None = None
 
 
-def _get_client() -> ObsidianCLI:
-    """Get or create the ObsidianCLI client singleton."""
+def _get_client() -> VaultBackend:
+    """Select the backend once per process. Never launches Obsidian."""
     global _client  # noqa: PLW0603
     if _client is None:
-        _client = ObsidianCLI()
-        logger.info("Obsidian CLI: binary=%s, vault=%s", _client.cli_path, _client.vault_name or "(default)")
+        _client = select_backend()
+        logger.info("backend=%s", _client.name)
     return _client
+
+
+def _backend_name() -> str | None:
+    """Name of the selected backend, or None before first use."""
+    return _client.name if _client is not None else None
+
+
+class BackendTagMiddleware(Middleware):
+    """Append ``[backend: cli|file]`` to every tool result so consumers know which index answered."""
+
+    async def on_call_tool(self, context: MiddlewareContext[Any], call_next: CallNext[Any, Any]) -> Any:
+        result = await call_next(context)
+        name = _backend_name()
+        if name and getattr(result, "content", None):
+            last = result.content[-1]
+            if isinstance(last, TextContent) and not last.text.rstrip().endswith(f"[backend: {name}]"):
+                last.text = f"{last.text.rstrip()}\n[backend: {name}]"
+        return result
+
+
+mcp.add_middleware(BackendTagMiddleware())
 
 
 def _error_response(e: ObsidianCLIError) -> str:
@@ -1056,6 +1083,63 @@ async def vault_move(
         return _error_response(e)
     except Exception as e:
         logger.exception("Unexpected error in vault_move")
+        return f"Error: {e}"
+
+
+# ===========================================================================
+# DAILY NOTE AND TEMPLATE TOOLS
+# ===========================================================================
+
+
+@mcp.tool
+async def vault_daily_read(
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Read today's daily note.
+
+    Path and format come from the Daily notes core plugin settings
+    (``.obsidian/daily-notes.json``). Errors if today's note does not exist yet.
+    """
+    try:
+        content: str = await _run(_get_client().daily_read, vault=vault)
+        return content
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_daily_read")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_daily_append(
+    content: Annotated[str, Field(description="Content to append (Markdown). Use \\n for newlines.")],
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Append to today's daily note, creating it from the configured template if needed."""
+    try:
+        result = await _run(_get_client().daily_append, content=content, vault=vault)
+        result_str = str(result).strip()
+        return result_str if result_str else "Appended to daily note"
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_daily_append")
+        return f"Error: {e}"
+
+
+@mcp.tool
+async def vault_template_read(
+    name: Annotated[str, Field(description="Template name (without .md), resolved in the templates folder")],
+    vault: Annotated[str | None, Field(description="Vault name override")] = None,
+) -> str:
+    """Read a template's raw content from the Templates core plugin folder."""
+    try:
+        content: str = await _run(_get_client().template_read, name=name, vault=vault)
+        return content
+    except ObsidianCLIError as e:
+        return _error_response(e)
+    except Exception as e:
+        logger.exception("Unexpected error in vault_template_read")
         return f"Error: {e}"
 
 
