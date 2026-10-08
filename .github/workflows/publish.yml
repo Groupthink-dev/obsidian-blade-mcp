@@ -1,7 +1,7 @@
-# Publishes to PyPI on a version tag via trusted publishing. Dormant until the
-# repository is mirrored to GitHub (planned for v1.1.0); until then releases
-# are cut with `make publish` from a workstation. The PyPI trusted publisher
-# must name this repository, workflow file and the `pypi` environment.
+# Publishes to PyPI on a version tag via trusted publishing. Runs on the
+# GitHub push mirror (Groupthink-dev/obsidian-blade-mcp) fed from Forgejo;
+# the PyPI trusted publisher names this repository, workflow file and the
+# `pypi` environment. `make publish` with a token remains the fallback.
 name: Publish
 
 on:
@@ -18,13 +18,13 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v10
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.13
 
       - name: Verify tag matches pyproject.toml version
         run: |
