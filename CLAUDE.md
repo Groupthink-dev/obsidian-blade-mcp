@@ -58,6 +58,7 @@ make test          # Run unit tests (mocked subprocess, no Obsidian needed)
 make test-e2e      # Run E2E tests (requires running Obsidian)
 make check         # Run all quality checks (lint + format + type-check)
 make check-linux   # Same checks as the Woodpecker lane, in podman, no Obsidian
+make smoke         # Handshake + tool count + vault_info through a real MCP client
 make lint          # Ruff linting
 make format        # Ruff formatting
 make type-check    # mypy

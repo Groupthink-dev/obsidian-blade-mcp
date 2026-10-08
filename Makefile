@@ -1,4 +1,4 @@
-.PHONY: help install install-dev sync test test-unit test-e2e test-cov lint format format-check type-check check check-linux build publish clean run server pre-commit-install pre-commit-run
+.PHONY: smoke help install install-dev sync test test-unit test-e2e test-cov lint format format-check type-check check check-linux build publish clean run server pre-commit-install pre-commit-run
 
 help:
 	@echo "Available targets:"
@@ -109,3 +109,9 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 	@echo "Cleanup complete!"
+
+# Drive the server as an MCP client would: handshake, tool count, vault_info.
+# Defaults to the published package via uvx; SMOKE_CMD overrides the command.
+SMOKE_CMD ?= uvx obsidian-blade-mcp
+smoke:
+	uv run python scripts/smoke.py $(SMOKE_CMD)
